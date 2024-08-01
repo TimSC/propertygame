@@ -169,7 +169,7 @@ class PropertyGame(object):
 				bankrupted = self.EnsurePlayment(playerId, -destinationSpace['income'], 'bank')
 				if bankrupted: turnEnded = True
 
-				# TODO Implement 10% tax choice
+				# TODO Implement 10% tax choice (on US not UK board)
 
 			elif ty in ['property', 'station', 'utility']:
 				self.PlayerLandedOnPurchasable(playerId, destinationSpaceId, diceRoll, extraRent)
@@ -422,7 +422,7 @@ class PropertyGame(object):
 			# Bidding too high can cause bankrupcy
 			# https://boardgames.stackexchange.com/questions/39455/in-monopoly-what-happens-if-the-auction-winner-cannot-pay-his-her-bid
 			bankrupted = self.EnsurePlayment(highestBidder, secondHighestBid + 1, 'bank')
-			self.spaceOwners[spaceId] = playerId
+			self.spaceOwners[spaceId] = highestBidder
 			self.globalInterface.Log("Player {} bought {} for {}".format(highestBidder, space['name'], secondHighestBid + 1))
 
 		else:
@@ -464,7 +464,6 @@ class PropertyGame(object):
 
 	def MortgageSpace(self, spaceId):
 		space = self.board[spaceId]
-		assert space['type'] == 'property'
 		ownerId = self.spaceOwners[spaceId]
 		self.playerMoney[ownerId] += space['mortgage']
 		self.spaceMortgaged[spaceId] = True
@@ -584,8 +583,7 @@ class HumanInterface(object):
 		unmortgaged = []
 		for spaceId, space in enumerate(gameState.board):
 			if self.playerNum == gameState.spaceOwners[spaceId] \
-				and not gameState.spaceMortgaged[spaceId] \
-				and space['type'] == 'property': # Utilities and stations cant be mortgaged
+				and not gameState.spaceMortgaged[spaceId]:
 
 				unmortgaged.append(spaceId)
 
@@ -648,8 +646,7 @@ class RandomInterface(object):
 		unmortgaged = []
 		for spaceId, space in enumerate(gameState.board):
 			if self.playerNum == gameState.spaceOwners[spaceId] \
-				and not gameState.spaceMortgaged[spaceId] \
-				and space['type'] == 'property': # Utilities and stations cant be mortgaged
+				and not gameState.spaceMortgaged[spaceId]:
 
 				unmortgaged.append(spaceId)
 

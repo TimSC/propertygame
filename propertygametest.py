@@ -65,6 +65,8 @@ def Test():
 		raise RuntimeError()
 	if propertyGame.playerMoney[0] != 1350:
 		raise RuntimeError()
+	if propertyGame.spaceOwners[12] != 0:
+		raise RuntimeError()
 	propertyGame.EndPlayerTurn()
 	
 	# Player 1
@@ -164,7 +166,84 @@ def Test():
 		raise RuntimeError()
 	propertyGame.EndPlayerTurn()
 
+	# Player 1
+	playerInterfaces[1].Reset()
+	playerInterfaces[1].optionToBuy = 0
+	playerInterfaces[0].getAuctionBid = 0
+	playerInterfaces[1].getAuctionBid = 209
+	playerInterfaces[2].getAuctionBid = 210
+	propertyGame.DoTurn([(2,6)])
+	if propertyGame.playerPositions[1] != 29:
+		raise RuntimeError()
+	if propertyGame.playerMoney[2] != 664:
+		raise RuntimeError()
+	propertyGame.EndPlayerTurn()
+
+	# Player 2 (buy short line)
+	playerInterfaces[2].Reset()
+	playerInterfaces[2].optionToBuy = 0
+	playerInterfaces[0].getAuctionBid = 0
+	playerInterfaces[1].getAuctionBid = 10
+	playerInterfaces[2].getAuctionBid = 9
+	propertyGame.DoTurn([(3,5)])
+	if propertyGame.playerPositions[2] != 35:
+		raise RuntimeError()
+	if propertyGame.playerMoney[1] != 1053:
+		raise RuntimeError()
+	if propertyGame.spaceOwners[35] != 1:
+		raise RuntimeError()
+	propertyGame.EndPlayerTurn()
+
+	# Turn 3
+	# Player 0 
+	playerInterfaces[0].Reset()
+	playerInterfaces[0].optionToBuy = 1
+	propertyGame.DoTurn([(2,6)])
+	if propertyGame.playerPositions[0] != 13:
+		raise RuntimeError()
+	if propertyGame.playerMoney[0] != 1213:
+		raise RuntimeError()
+	propertyGame.EndPlayerTurn()
+
+	# Player 1
+	playerInterfaces[1].Reset()
+	propertyGame.DoTurn([(3,6)])
+	if propertyGame.playerPositions[1] != 38:
+		raise RuntimeError()
+	if propertyGame.playerMoney[1] != 953:
+		raise RuntimeError()
+	propertyGame.EndPlayerTurn()
 	
+	# Player 2
+	playerInterfaces[2].Reset()
+	playerInterfaces[2].optionToBuy = 1
+	propertyGame.DoTurn([(5,5), (1,5)])
+	if propertyGame.playerPositions[2] != 11:
+		raise RuntimeError()
+	if propertyGame.playerMoney[1] != 1003:
+		raise RuntimeError()
+	if propertyGame.playerMoney[2] != 674: # Human error, this should be 664 + 200 - 50 - 140
+		raise RuntimeError()
+	propertyGame.EndPlayerTurn()
+
+	# Turn 4
+	# Player 0 
+	playerInterfaces[0].Reset()
+	propertyGame.DoTurn([(1,6)])
+	if propertyGame.playerPositions[0] != 20:
+		raise RuntimeError()
+	if propertyGame.playerMoney[0] != 1213:
+		raise RuntimeError()
+	propertyGame.EndPlayerTurn()
+
+	# Player 1
+	playerInterfaces[1].Reset()
+	propertyGame.DoTurn([(1,1), (2,3)])
+	if propertyGame.playerPositions[1] != 5:
+		raise RuntimeError()
+	if propertyGame.playerMoney[1] != 1203:
+		raise RuntimeError()
+	propertyGame.EndPlayerTurn()
 
 if __name__=="__main__":
 	Test()
