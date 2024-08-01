@@ -64,7 +64,7 @@ class PropertyGame(object):
 
 		self.playerTurn = random.randint(0, self.numPlayers-1)
 
-	def DoTurn(self):
+	def DoTurn(self, forceRolls=None):
 
 		assert not self.playerBankrupt[self.playerTurn]
 		justReleasedFromJail = False
@@ -83,14 +83,20 @@ class PropertyGame(object):
 		if self.playerTimeInJail[self.playerTurn] is not None:
 			response = self.playerInterfaces[self.playerTurn].PayJailFine(self)
 			if response:
-				self.EnsurePlayment(self.playerTurn, self.jailFine)
 				self.globalInterface.Log("Player {} paid {} to be released".format(self.playerTurn, self.jailFine))
+				bankrupted = self.EnsurePlayment(self.playerTurn, self.jailFine)
+				if bankrupted: return
 				self.ReleaseFromJail(self.playerTurn)
 
 		for i in range(3): # Roll count
 
-			dieRoll1 = random.randint(1,6)
-			dieRoll2 = random.randint(1,6)
+			assert not self.playerBankrupt[self.playerTurn]
+			if forceRolls is None:
+				dieRoll1 = random.randint(1,6)
+				dieRoll2 = random.randint(1,6)
+			else:
+				dieRoll1 = forceRolls[i][0]
+				dieRoll2 = forceRolls[i][1]
 			rolledDouble = dieRoll1==dieRoll2
 			self.globalInterface.Log("Player {} rolled a {} and a {}".format(self.playerTurn, dieRoll1, dieRoll2))
 
@@ -106,8 +112,9 @@ class PropertyGame(object):
 
 					if self.playerTimeInJail[self.playerTurn] >= 3:
 						# Player must pay fine on third attempt
-						self.EnsurePlayment(self.playerTurn, self.jailFine)
 						self.globalInterface.Log("Player {} paid {} to be released".format(self.playerTurn, self.jailFine))
+						bankrupted = self.EnsurePlayment(self.playerTurn, self.jailFine)
+						if bankrupted: return
 						self.ReleaseFromJail(self.playerTurn)
 					else:
 						break
@@ -159,7 +166,8 @@ class PropertyGame(object):
 
 			elif ty =='tax':
 				self.globalInterface.Log("Landed on {}, has to pay {}".format(destinationSpace['name'], -destinationSpace['income']))
-				self.EnsurePlayment(playerId, -destinationSpace['income'], 'bank')
+				bankrupted = self.EnsurePlayment(playerId, -destinationSpace['income'], 'bank')
+				if bankrupted: turnEnded = True
 
 				# TODO Implement 10% tax choice
 
@@ -193,6 +201,8 @@ class PropertyGame(object):
 		destinationSpace = self.board[destinationSpaceId]
 
 		if ownerId is not None:
+			# Already owned
+
 			if playerId != ownerId and not self.spaceMortgaged[destinationSpaceId]: # Don't pay rent on your own properties
 				rent = self.CalcRent(playerId, destinationSpaceId, diceRoll, extraRent)
 				self.globalInterface.Log("Landed on {}, and has to pay {} to player {}".format(destinationSpace['name'], rent, ownerId))
@@ -200,7 +210,10 @@ class PropertyGame(object):
 				self.EnsurePlayment(playerId, rent, ownerId) # Player needs to raise some money
 
 		else:
+			# Not owned
 			accepted = False
+
+			#TODO a player is allowed to mortgage and sell houses here?
 			if self.playerMoney[playerId] > destinationSpace['price']:
 				# Allow a player to purpose the property at full price
 				accepted = self.playerInterfaces[playerId].OptionToBuy(destinationSpaceId, self)
@@ -213,6 +226,9 @@ class PropertyGame(object):
 				self.globalInterface.Log("Player {} bought {}".format(playerId, destinationSpace['name']))
 			else:
 				self.AuctionProperty(destinationSpaceId)
+
+		backrupted = self.playerBankrupt[playerId]
+		return backrupted
 
 	def PlayerLandedOnChanceCommunity(self, playerId, spaceId, deck):
 		
@@ -250,7 +266,7 @@ class PropertyGame(object):
 						self.globalInterface.Log("Passed {}, gained {}".format(space['name'], space['income_on_pass']))
 
 				diceTotal = None
-				if destinationId == 'utility':
+				if destinationId == 'utility' and self.spaceOwners[cursor] is not None:
 					dieRoll1 = random.randint(1,6)
 					dieRoll2 = random.randint(1,6)
 					diceTotal = dieRoll1 + dieRoll2
@@ -267,7 +283,8 @@ class PropertyGame(object):
 				self.playerMoney[playerId] += amount
 			else:
 				self.globalInterface.Log("Player {} must play {} money".format(playerId, -amount))
-				self.EnsurePlayment(playerId, -amount, 'bank')
+				bankrupted = self.EnsurePlayment(playerId, -amount, 'bank')
+				if bankrupted: turnEnded = True
 
 		if 'income_per_player' in drawCard:
 			amount = drawCard['income_per_player']
@@ -280,7 +297,8 @@ class PropertyGame(object):
 				self.globalInterface.Log("Player {} must pay {} to each player".format(playerId, amount))
 				for plId in range(self.numPlayers):
 					if plId != playerId: continue
-					self.EnsurePlayment(playerId, amount, plId)
+					bankrupted = self.EnsurePlayment(playerId, amount, plId)
+					if bankrupted: turnEnded = True
 
 		if 'pay_per_house' in drawCard:
 			pass # TODO
@@ -403,7 +421,7 @@ class PropertyGame(object):
 		if highestBid >= 1:
 			# Bidding too high can cause bankrupcy
 			# https://boardgames.stackexchange.com/questions/39455/in-monopoly-what-happens-if-the-auction-winner-cannot-pay-his-her-bid
-			self.EnsurePlayment(highestBidder, secondHighestBid + 1, 'bank')
+			bankrupted = self.EnsurePlayment(highestBidder, secondHighestBid + 1, 'bank')
 			self.spaceOwners[spaceId] = playerId
 			self.globalInterface.Log("Player {} bought {} for {}".format(highestBidder, space['name'], secondHighestBid + 1))
 
@@ -425,10 +443,12 @@ class PropertyGame(object):
 		if self.playerMoney[playerOwingId] < moneyNeeded:
 			self.globalInterface.Log("Player {} did not raise enough and went bankrupt".format(playerOwingId))
 			self.PlayerGoesBankrupt(playerOwingId, playerOwedId)
+			return True
 
 		self.playerMoney[playerOwingId] -= moneyNeeded
 		if playerOwedId != 'bank':
 			self.playerMoney[playerOwedId] += moneyNeeded
+		return False
 
 	def PlayerTryRaiseMoney(self, playerId, moneyNeeded):
 
@@ -451,6 +471,7 @@ class PropertyGame(object):
 
 	def PlayerGoesBankrupt(self, playerOwingId, playerOwedId):
 
+		self.globalInterface.Log("Player {} goes backrupt and pays everything to {}".format(playerOwingId, playerOwedId))
 		self.playerBankrupt[playerOwingId] = True
 
 		# Transfer all cash
