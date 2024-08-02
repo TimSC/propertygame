@@ -37,6 +37,7 @@ class PropertyGame(object):
 		self.spaceMortgaged = []
 		self.boardHouses = []
 		self.boardHotels = []
+		self.boardGroupBuildOrder = {}
 		self.boardStations = []
 		self.boardUtilities = []
 		self.boardJailSpaceId = None
@@ -59,6 +60,9 @@ class PropertyGame(object):
 					else:
 						self.propertyGroup[inGroup] = [spaceId]
 					self.propertyInGroup[spaceId] = inGroup
+					if inGroup not in self.boardGroupBuildOrder:
+						self.boardGroupBuildOrder[inGroup] = []
+
 				elif ty == "jail":
 					self.boardJailSpaceId = spaceId
 
@@ -659,6 +663,7 @@ class PropertyGame(object):
 		freeHouses, freeHotels = self.GetFreeBuildings()
 		
 		existingHouses, groupHouses = self.NumHousesInGroup(groupId)
+		assert existingHouses == len(self.boardGroupBuildOrder[groupId])
 
 		groupHouses.sort(key = lambda x: x[1])	
 		impossible = False
@@ -680,7 +685,7 @@ class PropertyGame(object):
 			planAddCost = 0
 
 			for i in range(numBuildings - existingHouses):
-				# Plan a single building
+				# Plan adding a single building
 
 				space = self.board[groupHouses[cursor][0]]
 
@@ -731,6 +736,7 @@ class PropertyGame(object):
 					for hi, si in enumerate(self.boardHouses):
 						if si == spaceId: self.boardHouses[hi] = None
 					self.boardHotels[hotelId] = spaceId
+				self.boardGroupBuildOrder[groupId].append(spaceId)
 
 			if applyPayment:
 				bankrupted = self.EnsurePlayment(groupOwner, planAddCost, 'bank')
@@ -740,9 +746,63 @@ class PropertyGame(object):
 
 			assert existingHouses2 == numBuildings
 			return impossible, None, reasons
+
 		else:
-			#Decrease wanted
-			pass #TODO
+
+			# Plan removal of buildings
+			planHouseCount = {}
+			for spaceId, buildCount in groupHouses:
+				planHouseCount[spaceId] = buildCount
+			planRemoveCount = 0
+			planningFreeHouses = freeHouses[:]
+			for i in range(existingHouses-numBuildings):
+
+				# Plan removal of a single building
+				spaceId = self.boardGroupBuildOrder[groupId][-i-1]
+				space = self.board[spaceId]
+
+				if planHouseCount[spaceId] >= 5:
+
+					# Add houses
+					# What if we run out?
+					# https://boardgames.stackexchange.com/questions/925/what-happens-when-you-need-to-tear-down-a-hotel-but-no-houses-are-in-the-bank-in
+					# Approach used is to forhid sale of hotel
+					if len(planningFreeHouses) < 4:
+						# Forbid sale if we ran out
+						reasons.append(["Insufficient houses available to replace hotel"])
+						return True, planRemoveCount, reasons
+					else:
+						for j in range(4):
+							planningFreeHouses.pop()
+
+				planHouseCount[spaceId] -= 1
+				planRemoveCount += 1
+
+			# Execute the removal plan
+			houseCount = {}
+			for spaceId, buildCount in groupHouses:
+				houseCount[spaceId] = buildCount
+			for i in range(planRemoveCount):
+
+				spaceId = self.boardGroupBuildOrder[groupId].pop(-1)
+				space = self.board[spaceId]
+
+				if houseCount[spaceId] >= 5:
+					# Remove hotel
+					ind = self.boardHotels.index(spaceId)
+					self.boardHotels[ind] = None
+			
+					# Add 4 houses
+					for j in range(4):
+						self.boardHouses[freeHouses.pop()] = spaceId
+
+				else:
+					ind = self.boardHouses.index(spaceId)
+					self.boardHouses[ind] = None
+
+				if applyPayment:
+					self.playerMoney[groupOwner] += space['building_costs'] // 2
+				houseCount[spaceId] -= 1
 
 		return impossible, None, reasons
 
