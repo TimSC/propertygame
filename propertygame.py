@@ -35,7 +35,8 @@ class PropertyGame(object):
 			self.playerBankrupt.append(False)
 		self.spaceOwners = []
 		self.spaceMortgaged = []
-		self.spaceHouses = []
+		self.boardHouses = []
+		self.boardHotels = []
 		self.boardStations = []
 		self.boardUtilities = []
 		self.boardJailSpaceId = None
@@ -44,7 +45,6 @@ class PropertyGame(object):
 
 		for spaceId, space in enumerate(self.board):
 			self.spaceOwners.append(None)
-			self.spaceHouses.append(0)
 			self.spaceMortgaged.append(False)
 			if 'type' in space:
 				ty = space['type']
@@ -61,6 +61,11 @@ class PropertyGame(object):
 					self.propertyInGroup[spaceId] = inGroup
 				elif ty == "jail":
 					self.boardJailSpaceId = spaceId
+
+		for i in range(self.houseMarkers):
+			self.boardHouses.append(None)
+		for i in range(self.hotelMarkers):
+			self.boardHotels.append(None)
 
 		self.playerTurn = random.randint(0, self.numPlayers-1)
 
@@ -357,7 +362,7 @@ class PropertyGame(object):
 		if ty == 'property':
 			# https://boardgames.stackexchange.com/questions/53743/in-monopoly-if-a-player-owns-all-of-a-set-of-properties-but-one-of-the-properti
 			# Sets with mortgaged properies don't count in certain editions but we will allow them
-			houses = self.spaceHouses[spaceId]
+			houses = self.NumHousesOnSpace(spaceId)
 			fullGroupOwned = None
 			groupHouses = 0
 
@@ -369,7 +374,7 @@ class PropertyGame(object):
 				for prId in propGroup:
 					if self.spaceOwners[prId] == ownerId:
 						countOwned += 1
-						groupHouses += self.spaceHouses[prId]
+						groupHouses += self.NumHousesOnSpace(prId)
 				fullGroupOwned = countOwned == len(propGroup)
 
 				if groupHouses == 0 and fullGroupOwned:
@@ -463,6 +468,7 @@ class PropertyGame(object):
 		self.playerInterfaces[playerId].TryRaiseMoney(moneyNeeded, self)
 
 	def MortgageSpace(self, spaceId):
+		assert NumHousesOnSpace(spaceId) == 0
 		space = self.board[spaceId]
 		ownerId = self.spaceOwners[spaceId]
 		self.playerMoney[ownerId] += space['mortgage']
@@ -525,6 +531,217 @@ class PropertyGame(object):
 			# Paying for interest on properties following a bankrupcy could trigger another bankrupcy
 			# https://boardgames.stackexchange.com/questions/50930/monopoly-can-you-go-bankrupt-by-having-someone-else-go-bankrupt-on-you/
 			self.EnsurePlayment(playerOwedId, totalBill, 'bank')
+
+	def FreeTrading():
+
+		while True:
+
+			playerId = self.globalInterface.GetPlayerIdToTrade()
+			if playerId == -1: break
+
+			self.playerInterfaces[playerId].DoTrading(self)
+
+	def GetCompleteHouseGroups(self, ownedBy=None):
+		
+		completeGroups = []
+		for groupId, group in self.propertyGroup:
+			firstSpace = None
+			groupOwnedBy = None
+			groupCheckedMembers = []
+			for spaceId in group:
+				space = self.board[spaceId]
+				owner = self.spaceOwners[spaceId]
+
+				if ownedBy is not None and ownedBy != owner:
+					continue
+				if groupOwnedBy is not None and groupOwnedBy != owner:
+					continue
+				if firstSpace is None:
+					firstSpace = space
+					if groupOwnedBy is None:
+						groupOwnedBy = owner
+				
+				groupCheckedMembers.append(spaceId)
+
+			fullGroup = len(groupCheckedMembers) == len(group)
+			completeGroups.append(groupId)
+
+		return completeGroups
+
+	def GetGroupOwner(self, groupId):
+		
+		firstSpace = None
+		groupOwnedBy = None
+		allOwned = True
+		for spaceId in self.propertyGroup[groupId]:
+			owner = self.spaceOwners[spaceId]
+
+			if firstSpace is None:
+				firstSpace = spaceId
+				groupOwnedBy = owner
+
+			if owner is None:
+				allOwned = False
+			elif groupOwnedBy != owner:
+				allOwned = False
+
+		if allOwned:
+			return groupOwnedBy
+		return None
+
+	def IsGroupAllUnmortgaged(self, groupId):
+		
+		group = self.propertyGroup[groupId]
+		allUnmortgaged = True
+		for spaceId in group:
+			space = self.board[spaceId]
+			mortgaged = self.spaceMortgaged[spaceId]
+			if mortgaged:
+				allUnmortgaged = False
+				break
+
+		return allUnmortgaged
+
+	def NumHousesInGroup(self, groupId):
+		
+		group = self.propertyGroup[groupId]
+		existingHouses = 0
+		groupHouses = []
+		for spaceId in group:
+			count = self.NumHousesOnSpace(spaceId)
+			existingHouses += count
+			groupHouses.append([spaceId, count])
+
+		return existingHouses, groupHouses
+
+	def NumHousesOnSpace(self, spaceId):
+		countHouses = 0
+		for si in self.boardHouses:
+			if si == spaceId:
+				countHouses += 1
+
+		countHotels = 0
+		for si in self.boardHotels:
+			if si == spaceId:
+				countHotels += 1
+				
+		assert countHouses == 0 or countHotels == 0
+		assert countHouses >= 0 and countHouses <= 4
+		assert countHotels >= 0 and countHotels <= 1
+
+		if countHotels: return 5
+		return countHouses
+
+	def GetFreeBuildings(self):
+		freeHouses = []
+		for i, si in enumerate(self.boardHouses):
+			if si is None:
+				freeHouses.append(i)
+
+		freeHotels = []
+		for i, si in enumerate(self.boardHotels):
+			if si is None:
+				freeHotels.append(i)
+
+		return freeHouses, freeHotels
+
+	def SetNumBuildingsInGroup(self, groupId, numBuildings, planOnly = False, applyPayment = True):
+		
+		assert self.IsGroupAllUnmortgaged(groupId)
+		assert self.GetGroupOwner(groupId) is not None
+		group = self.propertyGroup[groupId]
+		assert numBuildings >= 0
+
+		groupOwner = self.GetGroupOwner(groupId)
+		availableMoney = self.playerMoney[groupOwner]
+
+		freeHouses, freeHotels = self.GetFreeBuildings()
+		
+		existingHouses, groupHouses = self.NumHousesInGroup(groupId)
+
+		groupHouses.sort(key = lambda x: x[1])	
+		impossible = False
+		reasons = []
+
+		#TODO put houses on expensive properties first
+
+		if numBuildings == existingHouses:
+			return False, None, reasons #No change
+
+		elif numBuildings > existingHouses:
+			# Increase wanted
+
+			# Plan addition checking limits at each stage
+			cursor = 0
+			planAddHouseId = []
+			planAddHotelId = []
+			planAddSpaceId = []
+			planAddCost = 0
+
+			for i in range(numBuildings - existingHouses):
+				space = self.board[groupHouses[cursor][0]]
+
+				if groupHouses[cursor][1] >= 5:
+					reasons.append("Too many buildings")
+					impossible = True
+					break
+
+				singleBuildingCost = space['building_costs']
+				newCost = planAddCost + singleBuildingCost
+				if applyPayment and newCost > availableMoney:
+					reasons.append("Cost is too high")
+					impossible = True
+					break
+
+				if groupHouses[cursor][1] <= 3:
+					if len(freeHouses) == 0:
+						reasons.append("Ran out of house markers")
+						impossible = True
+						break
+					planAddHouseId.append(freeHouses.pop())
+					planAddHotelId.append(None)
+				else:
+					if len(freeHotels) == 0:
+						reasons.append("Ran out of hotel markers")
+						impossible = True
+						break
+					planAddHouseId.append(None)
+					planAddHotelId.append(freeHotels.pop())
+
+				planAddCost = newCost
+				planAddSpaceId.append(groupHouses[cursor][0])
+				groupHouses[cursor][1] += 1
+
+				cursor += 1
+				if cursor >= len(groupHouses):
+					cursor = 0
+			
+			if impossible or planOnly:
+				return impossible, len(planAddSpaceId), reasons
+
+			# Execute plan to board
+			for houseId, hotelId, spaceId in zip(planAddHouseId, planAddHotelId, planAddSpaceId):
+				if houseId is not None:
+					self.boardHouses[houseId] = spaceId					
+				else:
+					# Remove 4 houses and replace with hotel
+					for hi, si in enumerate(self.boardHouses):
+						if si == spaceId: self.boardHouses[hi] = None
+					self.boardHotels[hotelId] = spaceId
+
+			if applyPayment:
+				bankrupted = self.EnsurePlayment(groupOwner, planAddCost, 'bank')
+				assert not bankrupted # Checks above should block bankrupcy
+			
+			existingHouses2, groupHouses2 = self.NumHousesInGroup(groupId)
+
+			assert existingHouses2 == numBuildings
+			return impossible, None, reasons
+		else:
+			#Decrease wanted
+			pass #TODO
+
+		return impossible, None, reasons
 
 def TrueOrFalseQuestion(questionText):
 	playerIn = None
@@ -624,6 +841,62 @@ class HumanInterface(object):
 
 		return choices
 
+	def DoTrading(self, gameState):
+		while True:
+			print ("1. Buy/sell houses and hotels")
+			print ("2. Mortgage/unmortgage houses")
+			print ("3. Propose a trade with other players")
+			print ("-1. Done")
+
+			ch = IntegerQuestion("Choice? (-1 to quit)")
+
+			if ch == -1: break
+			if ch == 1: self.DoTradingBuySellHouses(gameState)
+
+	def DoTradingBuySellHouses(self, gameState):
+		completeGroups = gameState.GetCompleteHouseGroups(self.playerId)
+
+		while True:
+			print ("Choose housing group:")
+			for group in completeGroups:
+				print (groupId, end="")
+				if not gameState.IsGroupAllUnmortgaged(groupId):
+					print (" Mortgaged")
+					continue
+
+				for spaceId in propertyGroup[groupId]:
+					print (" {}".format(gameState.NumHousesOnSpace()), end="")
+	
+			print ("-1. Done")
+
+			ch = IntegerQuestion("Group to change? (-1 to quit)")
+			if self.playerId == gameState.GetGroupOwner(ch) and gameState.IsGroupAllUnmortgaged(groupId):
+				self.DoTradingBuySellHousesOnGroup(ch, gameState)
+				
+			if ch == -1: break
+
+	def DoTradingBuySellHousesOnGroup(self, groupId, gameState):
+		
+		while True:
+
+			print ("Group", groupId)
+			group = self.propertyGroup[groupId]
+			
+			freeHouses, freeHotels = gameState.GetFreeBuildings()
+			countHouses, countHotels = len(freeHouses), len(freeHotels)
+
+			for spaceId in group:
+				space = self.board[spaceId]
+				print (spaceId, space['name'], self.NumHousesOnSpace(spaceId))
+
+			print ("{} houses and {} hotels free".format(countHouses, countHotels))
+
+			ch = IntegerQuestion("Set number of houses? (-1 to quit)")
+			
+			if ch == -1: break
+			gameState.SetNumBuildingsInGroup(groupId, numBuildiungs)
+			
+
 class RandomInterface(object):
 	def __init__(self, playerNum):
 		self.playerNum = playerNum
@@ -670,9 +943,15 @@ class RandomInterface(object):
 
 		return choices
 
+	def DoTrading(self, gameState):
+		return
+
 class GlobalInterface(object):
 	def Log(self, event):
 		print (event)
+
+	def GetPlayerIdToTrade(self):
+		return IntegerQuestion("Player ID wanting to trade (-1 to skip)?")
 
 if __name__=="__main__":
 
@@ -694,5 +973,7 @@ if __name__=="__main__":
 			print ("Player {} money: {}".format(propertyGame.playerTurn, propertyGame.playerMoney[propertyGame.playerTurn]))
 		propertyGame.EndPlayerTurn()
 		
+		propertyGame.FreeTrading()
+
 		turnCount += 1
 

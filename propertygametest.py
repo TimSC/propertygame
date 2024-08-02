@@ -32,6 +32,9 @@ class TestInterface(object):
 	def UnmortgageChoices(self, choices, gameState):
 		pass
 
+	def DoTrading(self, gameState):
+		return
+
 
 def SetCardPosition(deck, cardName, position):
 	
@@ -44,7 +47,153 @@ def SetCardPosition(deck, cardName, position):
 	card = deck.pop(ind)
 	deck.insert(position, card)
 
+def CheckBuildingCode():
+
+	playerInterfaces = [TestInterface(0), TestInterface(1), TestInterface(2)]
+
+	globalInterface = GlobalInterface()
+
+	# Build n houses on unimproved group
+	ownerId = 0
+	groupId = 3
+	propertyGame = PropertyGame(globalInterface, playerInterfaces)
+	assert propertyGame.GetGroupOwner(groupId) is None
+	freeHouses, freeHotels = propertyGame.GetFreeBuildings()
+	assert len(freeHouses) == propertyGame.houseMarkers
+	assert len(freeHotels) == propertyGame.hotelMarkers
+
+	numSpacesInGroup = len(propertyGame.propertyGroup[groupId])
+	fullHousesNeeded = 4 * numSpacesInGroup
+	fullBuildingsNeeded = 5 * numSpacesInGroup
+
+	for numBuildings in range(fullBuildingsNeeded+1):
+
+		propertyGame = PropertyGame(globalInterface, playerInterfaces)
+		
+		for spaceId in propertyGame.propertyGroup[groupId]:
+			propertyGame.spaceOwners[spaceId] = ownerId # Assign space ownership to player 0
+
+		impossible, numAllowed,reasons = propertyGame.SetNumBuildingsInGroup(groupId, numBuildings)
+		assert not impossible
+		assert numAllowed is None
+		existingHouses, groupHouses = propertyGame.NumHousesInGroup(groupId)
+		assert existingHouses == numBuildings
+		freeHouses, freeHotels = propertyGame.GetFreeBuildings()
+
+		diffHouses = max([g[1] for g in groupHouses]) - min([g[1] for g in groupHouses])
+		assert diffHouses <= 1 # Add houses as evenly as possible
+
+		expectedCost = 0
+		for spaceId, nb in groupHouses:
+			space = propertyGame.board[spaceId]
+			expectedCost += nb * space['building_costs']
+		assert propertyGame.playerMoney[ownerId] == 1500 - expectedCost
+
+		if numBuildings <= fullHousesNeeded:
+			assert len(freeHouses) == propertyGame.houseMarkers-numBuildings
+			assert len(freeHotels) == propertyGame.hotelMarkers
+		if numBuildings == fullBuildingsNeeded:
+			assert len(freeHouses) == propertyGame.houseMarkers
+			assert len(freeHotels) == propertyGame.hotelMarkers-numSpacesInGroup
+
+	# Build n houses on partly improved group
+	groupId = 4
+	propertyGame = PropertyGame(globalInterface, playerInterfaces)
+
+	numSpacesInGroup = len(propertyGame.propertyGroup[groupId])
+	fullHousesNeeded = 4 * len(propertyGame.propertyGroup[groupId])
+	existingBuildings = 7
+
+	for numBuildings in range(existingBuildings, fullHousesNeeded+1):
+
+		propertyGame = PropertyGame(globalInterface, playerInterfaces)
+		
+		for spaceId in propertyGame.propertyGroup[groupId]:
+			propertyGame.spaceOwners[spaceId] = ownerId # Assign space ownership to player 0	
+
+		for i in range(existingBuildings):
+			propertyGame.boardHouses[i] = propertyGame.propertyGroup[groupId][i % numSpacesInGroup]
+
+		impossible, numAllowed, reasons = propertyGame.SetNumBuildingsInGroup(groupId, numBuildings)
+		assert not impossible
+		assert numAllowed is None 
+		existingHouses, groupHouses = propertyGame.NumHousesInGroup(groupId)
+		assert existingHouses == numBuildings
+		freeHouses, freeHotels = propertyGame.GetFreeBuildings()
+
+		diffHouses = max([g[1] for g in groupHouses]) - min([g[1] for g in groupHouses])
+		assert diffHouses <= 1 # Add houses as evenly as possible
+
+		if numBuildings <= 12:
+			assert len(freeHouses) == propertyGame.houseMarkers-numBuildings
+			assert len(freeHotels) == propertyGame.hotelMarkers
+
+	# Try build too much
+	groupId = 4
+	propertyGame = PropertyGame(globalInterface, playerInterfaces)
+
+	numSpacesInGroup = len(propertyGame.propertyGroup[groupId])
+	fullHousesNeeded = 4 * len(propertyGame.propertyGroup[groupId])
+	fullBuildingsNeeded = 5 * numSpacesInGroup
+	existingBuildings = 4
+
+	for numBuildings in range(fullBuildingsNeeded+1, fullBuildingsNeeded+10):
+
+		propertyGame = PropertyGame(globalInterface, playerInterfaces)
+		
+		for spaceId in propertyGame.propertyGroup[groupId]:
+			propertyGame.spaceOwners[spaceId] = ownerId # Assign space ownership to player 0
+		propertyGame.playerMoney[ownerId] = 2000	
+		
+		for i in range(existingBuildings):
+			propertyGame.boardHouses[i] = propertyGame.propertyGroup[groupId][i % numSpacesInGroup]
+
+		impossible, numAllowed, reasons = propertyGame.SetNumBuildingsInGroup(groupId, numBuildings)
+		assert impossible
+		assert numAllowed == 11
+
+		existingHouses, groupHouses = propertyGame.NumHousesInGroup(groupId)
+		assert existingHouses == existingBuildings
+		freeHouses, freeHotels = propertyGame.GetFreeBuildings()
+
+		assert len(freeHouses) == propertyGame.houseMarkers-existingBuildings
+		assert len(freeHotels) == propertyGame.hotelMarkers
+
+	# Try build too expensive
+	groupId = 5
+	propertyGame = PropertyGame(globalInterface, playerInterfaces)
+
+	numSpacesInGroup = len(propertyGame.propertyGroup[groupId])
+	fullHousesNeeded = 4 * len(propertyGame.propertyGroup[groupId])
+	fullBuildingsNeeded = 5 * numSpacesInGroup
+	existingBuildings = 6
+
+	for numBuildings in range(fullBuildingsNeeded+1, fullBuildingsNeeded+10):
+
+		propertyGame = PropertyGame(globalInterface, playerInterfaces)
+		
+		for spaceId in propertyGame.propertyGroup[groupId]:
+			propertyGame.spaceOwners[spaceId] = ownerId # Assign space ownership to player 0
+		propertyGame.playerMoney[ownerId] = 360	
+		
+		for i in range(existingBuildings):
+			propertyGame.boardHouses[i] = propertyGame.propertyGroup[groupId][i % numSpacesInGroup]
+
+		impossible, numAllowed, reasons = propertyGame.SetNumBuildingsInGroup(groupId, numBuildings)
+		assert impossible
+		assert numAllowed == 2
+
+		existingHouses, groupHouses = propertyGame.NumHousesInGroup(groupId)
+		assert existingHouses == existingBuildings
+		freeHouses, freeHotels = propertyGame.GetFreeBuildings()
+
+		assert len(freeHouses) == propertyGame.houseMarkers-existingBuildings
+		assert len(freeHotels) == propertyGame.hotelMarkers
+
+
 def Test():
+
+	CheckBuildingCode()
 
 	playerInterfaces = [TestInterface(0), TestInterface(1), TestInterface(2)]
 
