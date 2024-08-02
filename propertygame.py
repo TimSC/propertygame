@@ -645,6 +645,7 @@ class PropertyGame(object):
 
 		return freeHouses, freeHotels
 
+	# Buying and selling houses and hotels
 	def SetNumBuildingsInGroup(self, groupId, numBuildings, planOnly = False, applyPayment = True):
 		
 		assert self.IsGroupAllUnmortgaged(groupId)
@@ -679,6 +680,8 @@ class PropertyGame(object):
 			planAddCost = 0
 
 			for i in range(numBuildings - existingHouses):
+				# Plan a single building
+
 				space = self.board[groupHouses[cursor][0]]
 
 				if groupHouses[cursor][1] >= 5:

@@ -168,7 +168,7 @@ def CheckBuildingCode():
 	fullBuildingsNeeded = 5 * numSpacesInGroup
 	existingBuildings = 6
 
-	for numBuildings in range(fullBuildingsNeeded+1, fullBuildingsNeeded+10):
+	for numBuildings in range(existingBuildings+3, fullBuildingsNeeded):
 
 		propertyGame = PropertyGame(globalInterface, playerInterfaces)
 		
@@ -190,6 +190,43 @@ def CheckBuildingCode():
 		assert len(freeHouses) == propertyGame.houseMarkers-existingBuildings
 		assert len(freeHotels) == propertyGame.hotelMarkers
 
+	# Try build with housing shortage
+	groupId = 6
+	oppenentOwnerId = 1
+	propertyGame = PropertyGame(globalInterface, playerInterfaces)
+
+	numSpacesInGroup = len(propertyGame.propertyGroup[groupId])
+	fullHousesNeeded = 4 * len(propertyGame.propertyGroup[groupId])
+	fullBuildingsNeeded = 5 * numSpacesInGroup
+	existingBuildings = 3
+	freeHouses = 2
+
+	for numBuildings in range(existingBuildings, fullHousesNeeded):
+
+		propertyGame = PropertyGame(globalInterface, playerInterfaces)
+		shouldBePossible = (numBuildings - existingBuildings) <= freeHouses
+
+		for spaceId, space in enumerate(propertyGame.board):
+			propertyGame.spaceOwners[spaceId] = oppenentOwnerId # Give entire board to opponent
+		for spaceId in propertyGame.propertyGroup[groupId]:
+			propertyGame.spaceOwners[spaceId] = ownerId # Assign space ownership to player 0
+		
+		cursor = 0
+		for i in range(propertyGame.houseMarkers-freeHouses):
+			while propertyGame.board[cursor]['type'] != 'property':
+				cursor += 1
+				if cursor >= len(propertyGame.board): cursor = 0
+			
+			propertyGame.boardHouses[i] = cursor # Put one house on properties
+			cursor += 1
+			if cursor >= len(propertyGame.board): cursor = 0
+
+		impossible, numAllowed, reasons = propertyGame.SetNumBuildingsInGroup(groupId, numBuildings)
+		assert impossible != shouldBePossible
+		if impossible:
+			assert numAllowed == freeHouses
+
+	exit(0)
 
 def Test():
 
