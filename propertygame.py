@@ -446,7 +446,7 @@ class PropertyGame(object):
 		highestBidder = bids[-1][0]
 
 		if highestBid >= 1:
-			# Bidding too high can cause bankrupcy
+			# Bidding too high can cause bankruptcy
 			# https://boardgames.stackexchange.com/questions/39455/in-monopoly-what-happens-if-the-auction-winner-cannot-pay-his-her-bid
 			bankrupted = self.EnsurePlayment(highestBidder, secondHighestBid + 1, 'bank')
 			self.spaceOwners[spaceId] = highestBidder
@@ -596,9 +596,13 @@ class PropertyGame(object):
 				else:
 					totalBill += mortgagePlusInterest
 
-			# Paying for interest on properties following a bankrupcy could trigger another bankrupcy
+			# Paying for interest on properties following a bankruptcy could trigger another bankruptcy
 			# https://boardgames.stackexchange.com/questions/50930/monopoly-can-you-go-bankrupt-by-having-someone-else-go-bankrupt-on-you/
 			self.EnsurePlayment(playerOwedId, totalBill, 'bank')
+
+		else:
+			# TODO The bank auctions all property.
+			pass
 
 	def FreeTrading(self):
 
@@ -802,7 +806,7 @@ class PropertyGame(object):
 
 			if applyPayment:
 				bankrupted = self.EnsurePlayment(groupOwner, planAddCost, 'bank')
-				assert not bankrupted # Checks above should block bankrupcy
+				assert not bankrupted # Checks above should block bankruptcy
 			
 			existingHouses2, groupHouses2 = self.NumHousesInGroup(groupId)
 
