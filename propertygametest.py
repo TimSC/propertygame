@@ -280,11 +280,7 @@ def CheckRemoveBuildings():
 		else:
 			assert len(freeHotels) == propertyGame.hotelMarkers-numBuildings+fullHousesNeeded
 
-def Test():
-
-	CheckBuildingCode()
-	CheckRemoveBuildings()
-
+def CheckNormalGameplay():
 	playerInterfaces = [TestInterface(0), TestInterface(1), TestInterface(2)]
 
 	globalInterface = GlobalInterface()
@@ -483,6 +479,13 @@ def Test():
 	if propertyGame.playerMoney[1] != 1203:
 		raise RuntimeError()
 	propertyGame.EndPlayerTurn()
+
+
+def Test():
+
+	CheckBuildingCode()
+	CheckRemoveBuildings()
+	CheckNormalGameplay()
 
 if __name__=="__main__":
 	Test()

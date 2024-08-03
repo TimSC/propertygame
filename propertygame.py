@@ -310,10 +310,24 @@ class PropertyGame(object):
 					if bankrupted: turnEnded = True
 
 		if 'pay_per_house' in drawCard:
-			pass # TODO
+			count = 0
+			for spaceId in self.boardHouses:
+				ownerId = self.spaceOwners[spaceId]
+				if ownerId == playerId:
+					count += 1
+
+			bankrupted = self.EnsurePlayment(playerId, count * drawCard['pay_per_house'], 'bank')
+			if bankrupted: turnEnded = True
 
 		if 'pay_per_hotel' in drawCard:
-			pass # TODO
+			count = 0
+			for spaceId in self.boardHotels:
+				ownerId = self.spaceOwners[spaceId]
+				if ownerId == playerId:
+					count += 1
+
+			bankrupted = self.EnsurePlayment(playerId, count * drawCard['pay_per_hotel'], 'bank')
+			if bankrupted: turnEnded = True
 
 		if 'relative_move' in drawCard:
 			pos = self.playerPositions[playerId]
@@ -495,7 +509,11 @@ class PropertyGame(object):
 		self.playerGetOutOfJailCards[playerOwingId] = []
 
 		# Remove all houses and hotels for cash
-		# TODO
+		for spaceId, space in enumerate(self.board):
+			owner = self.spaceOwners[spaceId]
+			if owner == playerOwingId:
+				propGroupId = self.propertyInGroup[spaceId]
+				self.SetNumBuildingsInGroup(propGroupId, 0)
 
 		# Transfer all property to owed player
 		mortgaged = []
