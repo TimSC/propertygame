@@ -73,7 +73,7 @@ def CheckBuildingCode():
 		for spaceId in propertyGame.propertyGroup[groupId]:
 			propertyGame.spaceOwners[spaceId] = ownerId # Assign space ownership to player 0
 
-		impossible, numAllowed,reasons = propertyGame.SetNumBuildingsInGroup(groupId, numBuildings)
+		impossible, numAllowed,reasons, planCost = propertyGame.SetNumBuildingsInGroup(groupId, numBuildings)
 		assert not impossible
 		assert numAllowed is None
 		existingHouses, groupHouses = propertyGame.NumHousesInGroup(groupId)
@@ -116,7 +116,7 @@ def CheckBuildingCode():
 			propertyGame.boardHouses[i] = spaceId
 			propertyGame.boardGroupBuildOrder[groupId].append(spaceId)
 
-		impossible, numAllowed, reasons = propertyGame.SetNumBuildingsInGroup(groupId, numBuildings)
+		impossible, numAllowed, reasons, planCost = propertyGame.SetNumBuildingsInGroup(groupId, numBuildings)
 		assert not impossible
 		assert numAllowed is None 
 		existingHouses, groupHouses = propertyGame.NumHousesInGroup(groupId)
@@ -152,7 +152,7 @@ def CheckBuildingCode():
 			propertyGame.boardHouses[i] = spaceId
 			propertyGame.boardGroupBuildOrder[groupId].append(spaceId)
 
-		impossible, numAllowed, reasons = propertyGame.SetNumBuildingsInGroup(groupId, numBuildings)
+		impossible, numAllowed, reasons, planCost = propertyGame.SetNumBuildingsInGroup(groupId, numBuildings)
 		assert impossible
 		assert numAllowed == 11
 
@@ -185,7 +185,7 @@ def CheckBuildingCode():
 			propertyGame.boardHouses[i] = spaceId
 			propertyGame.boardGroupBuildOrder[groupId].append(spaceId)
 
-		impossible, numAllowed, reasons = propertyGame.SetNumBuildingsInGroup(groupId, numBuildings)
+		impossible, numAllowed, reasons, planCost = propertyGame.SetNumBuildingsInGroup(groupId, numBuildings)
 		assert impossible
 		assert numAllowed == 2
 
@@ -229,7 +229,7 @@ def CheckBuildingCode():
 			cursor += 1
 			if cursor >= len(propertyGame.board): cursor = 0
 
-		impossible, numAllowed, reasons = propertyGame.SetNumBuildingsInGroup(groupId, numBuildings)
+		impossible, numAllowed, reasons, planCost = propertyGame.SetNumBuildingsInGroup(groupId, numBuildings)
 		assert impossible != shouldBePossible
 		if impossible:
 			assert numAllowed == freeHouses
@@ -256,11 +256,16 @@ def CheckRemoveBuildings():
 		for i, spaceId in enumerate(propertyGame.propertyGroup[groupId]):
 			propertyGame.spaceOwners[spaceId] = ownerId # Assign space ownership to player 0	
 			propertyGame.boardHotels[i] = spaceId # Put one hotel on properties
+		costToBuild = 0
 		for i in range(numBuildingsToFull):			
 			spaceId = propertyGame.propertyGroup[groupId][i % len(propertyGame.propertyGroup[groupId])]
+			space = propertyGame.board[spaceId]
+
+			if i >= numBuildings:
+				costToBuild += space['building_costs']
 			propertyGame.boardGroupBuildOrder[groupId].append(spaceId)
 
-		impossible, numAllowed, reasons = propertyGame.SetNumBuildingsInGroup(groupId, numBuildings)
+		impossible, numAllowed, reasons, planCost = propertyGame.SetNumBuildingsInGroup(groupId, numBuildings)
 
 		assert not impossible
 		assert numAllowed is None 
@@ -273,12 +278,13 @@ def CheckRemoveBuildings():
 		diffHouses = max([g[1] for g in groupHouses]) - min([g[1] for g in groupHouses])
 		assert diffHouses <= 1 # Add houses as evenly as possible
 
-
 		if numBuildings <= 12:
 			assert len(freeHouses) == propertyGame.houseMarkers-numBuildings
 			assert len(freeHotels) == propertyGame.hotelMarkers
 		else:
 			assert len(freeHotels) == propertyGame.hotelMarkers-numBuildings+fullHousesNeeded
+
+		assert propertyGame.playerMoney[ownerId] == 1500 + costToBuild // 2
 
 def CheckNormalGameplay():
 	playerInterfaces = [TestInterface(0), TestInterface(1), TestInterface(2)]

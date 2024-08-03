@@ -177,8 +177,7 @@ class PropertyGame(object):
 				self.globalInterface.Log("Landed on {}, has to pay {}".format(destinationSpace['name'], -destinationSpace['income']))
 				bankrupted = self.EnsurePlayment(playerId, -destinationSpace['income'], 'bank')
 				if bankrupted: turnEnded = True
-
-				# TODO Implement 10% tax choice (on US not UK board)
+				# US boards pre-2008 had a choice of 10% tax choice. This seems to have been removed.
 
 			elif ty in ['property', 'station', 'utility']:
 				self.PlayerLandedOnPurchasable(playerId, destinationSpaceId, diceRoll, extraRent)
@@ -222,12 +221,16 @@ class PropertyGame(object):
 			# Not owned
 			accepted = False
 
-			#TODO a player is allowed to mortgage and sell houses here?
-			if self.playerMoney[playerId] > destinationSpace['price']:
+			if self.playerMoney[playerId] < destinationSpace['price'] and self.PlayerMaxMoneyThatCanBeRaised(playerId) <= destinationSpace['price']:
+				# A player is allowed to mortgage and sell houses here to raise cash
+				self.globalInterface.Log("Player {} cannot automatically afford {} but could raise the cash".format(playerId, destinationSpace['name']))
+				self.PlayerTryRaiseMoney(playerId, destinationSpace['price'])
+
+			if self.playerMoney[playerId] >= destinationSpace['price']:
 				# Allow a player to purpose the property at full price
 				accepted = self.playerInterfaces[playerId].OptionToBuy(destinationSpaceId, self)
 			else:
-				self.globalInterface.Log("Player {} cannot automatically afford {}".format(playerId, destinationSpace['name']))
+				self.globalInterface.Log("Player {} cannot afford {}".format(playerId, destinationSpace['name']))
 
 			if accepted:
 				self.playerMoney[playerId] -= destinationSpace['price']
@@ -460,8 +463,13 @@ class PropertyGame(object):
 		#print ("EnsurePlayment", playerOwingId, moneyNeeded, playerOwedId)
 
 		if self.playerMoney[playerOwingId] < moneyNeeded:
-			self.globalInterface.Log("Player {} cannot afford to pay {}".format(playerOwingId, moneyNeeded))
-			self.PlayerTryRaiseMoney(playerOwingId, moneyNeeded)
+			if self.PlayerMaxMoneyThatCanBeRaised(playerOwingId) >= moneyNeeded:
+				self.globalInterface.Log("Player {} cannot afford to pay {} immediately".format(playerOwingId, moneyNeeded))
+				self.PlayerTryRaiseMoney(playerOwingId, moneyNeeded)
+			else:
+				self.globalInterface.Log("Player {} cannot afford to pay {} and cannot raise the cash".format(playerOwingId, moneyNeeded))
+				self.PlayerGoesBankrupt(playerOwingId, playerOwedId)
+				return True
 
 		if self.playerMoney[playerOwingId] < moneyNeeded:
 			self.globalInterface.Log("Player {} did not raise enough and went bankrupt".format(playerOwingId))
@@ -484,6 +492,41 @@ class PropertyGame(object):
 		# * Selling houses back to the bank
 		
 		self.playerInterfaces[playerId].TryRaiseMoney(moneyNeeded, self)
+
+	def PlayerMaxMoneyThatCanBeRaised(self, playerId):
+
+		# Plan to sell all houses (so there are more houses available to replace hotels)
+		totalBuildings = 0
+		for spaceId in self.boardHouses:
+			ownerId = self.spaceOwners[spaceId]
+			if owner != playerId: continue
+
+			propGroupId = self.propertyInGroup[spaceId]
+			
+			impossible, numAllowed, reasons, planCost = SetNumBuildingsInGroup(propGroupId, 0, planOnly = True)
+			totalBuildings += planCost
+
+		# Plan to sell all hotels
+		for spaceId in self.boardHotels:
+			ownerId = self.spaceOwners[spaceId]
+			if owner != playerId: continue
+
+			propGroupId = self.propertyInGroup[spaceId]
+			
+			impossible, numAllowed, reasons, planCost = SetNumBuildingsInGroup(propGroupId, 0, planOnly = True)
+			totalBuildings += planCost
+
+		# Plan to ortgage everything
+		totalMortgage = 0
+		for spaceId, space in self.board:
+			owner = self.spaceOwners[spaceId]
+			if owner != playerId: continue
+			if self.spaceMortgaged[spaceId]: continue
+
+			totalMortgage += space["mortgage"]
+
+		return self.playerMoney[playerId] + totalMortgage + totalBuildings
+
 
 	def MortgageSpace(self, spaceId):
 		assert NumHousesOnSpace(spaceId) == 0
@@ -514,6 +557,8 @@ class PropertyGame(object):
 			if owner == playerOwingId:
 				propGroupId = self.propertyInGroup[spaceId]
 				self.SetNumBuildingsInGroup(propGroupId, 0)
+
+		self.boardHotels = []
 
 		# Transfer all property to owed player
 		mortgaged = []
@@ -683,14 +728,12 @@ class PropertyGame(object):
 		existingHouses, groupHouses = self.NumHousesInGroup(groupId)
 		assert existingHouses == len(self.boardGroupBuildOrder[groupId])
 
-		groupHouses.sort(key = lambda x: x[1])	
+		groupHouses.sort(key = lambda x: (-x[0], x[1]))	# Put houses on expensive properties first
 		impossible = False
 		reasons = []
 
-		#TODO put houses on expensive properties first
-
 		if numBuildings == existingHouses:
-			return False, None, reasons #No change
+			return False, None, reasons, 0 #No change
 
 		elif numBuildings > existingHouses:
 			# Increase wanted
@@ -743,7 +786,7 @@ class PropertyGame(object):
 					cursor = 0
 			
 			if impossible or planOnly:
-				return impossible, len(planAddSpaceId), reasons
+				return impossible, len(planAddSpaceId), reasons, planAddCost
 
 			# Execute plan to board
 			for houseId, hotelId, spaceId in zip(planAddHouseId, planAddHotelId, planAddSpaceId):
@@ -763,66 +806,101 @@ class PropertyGame(object):
 			existingHouses2, groupHouses2 = self.NumHousesInGroup(groupId)
 
 			assert existingHouses2 == numBuildings
-			return impossible, None, reasons
+			return impossible, None, reasons, 0
 
 		else:
 
-			# Plan removal of buildings
-			planHouseCount = {}
-			for spaceId, buildCount in groupHouses:
-				planHouseCount[spaceId] = buildCount
-			planRemoveCount = 0
-			planningFreeHouses = freeHouses[:]
-			for i in range(existingHouses-numBuildings):
+			if numBuildings > 0:
 
-				# Plan removal of a single building
-				spaceId = self.boardGroupBuildOrder[groupId][-i-1]
-				space = self.board[spaceId]
+				# Plan removal of buildings individually
+				planHouseCount = {}
+				for spaceId, buildCount in groupHouses:
+					planHouseCount[spaceId] = buildCount
+				planRemoveCount = 0
+				planRemoveCost = 0
+				planningFreeHouses = freeHouses[:]
 
-				if planHouseCount[spaceId] >= 5:
+				for i in range(existingHouses-numBuildings):
 
-					# Add houses
-					# What if we run out?
-					# https://boardgames.stackexchange.com/questions/925/what-happens-when-you-need-to-tear-down-a-hotel-but-no-houses-are-in-the-bank-in
-					# Approach used is to forhid sale of hotel
-					if len(planningFreeHouses) < 4:
-						# Forbid sale if we ran out
-						reasons.append(["Insufficient houses available to replace hotel"])
-						return True, planRemoveCount, reasons
-					else:
+					# Plan removal of a single building
+					spaceId = self.boardGroupBuildOrder[groupId][-i-1]
+					space = self.board[spaceId]
+
+					if planHouseCount[spaceId] >= 5:
+
+						# Add houses
+						# What if we run out?
+						# https://boardgames.stackexchange.com/questions/925/what-happens-when-you-need-to-tear-down-a-hotel-but-no-houses-are-in-the-bank-in
+						# Approach used is to forhid sale of hotel
+						if len(planningFreeHouses) < 4:
+							# Forbid sale if we ran out
+							reasons.append(["Insufficient houses available to replace hotel"])
+							return True, planRemoveCount, reasons, planRemoveCost
+						else:
+							for j in range(4):
+								planningFreeHouses.pop()
+
+					planHouseCount[spaceId] -= 1
+					planRemoveCount += 1
+					planRemoveCost -= space['building_costs'] // 2
+
+				# Execute the removal plan
+				houseCount = {}
+				sell = 0
+				for spaceId, buildCount in groupHouses:
+					houseCount[spaceId] = buildCount
+				for i in range(planRemoveCount):
+
+					spaceId = self.boardGroupBuildOrder[groupId].pop(-1)
+					space = self.board[spaceId]
+
+					if houseCount[spaceId] >= 5:
+						# Remove hotel
+						ind = self.boardHotels.index(spaceId)
+						self.boardHotels[ind] = None
+				
+						# Add 4 houses
 						for j in range(4):
-							planningFreeHouses.pop()
+							self.boardHouses[freeHouses.pop()] = spaceId
 
-				planHouseCount[spaceId] -= 1
-				planRemoveCount += 1
+					else:
+						ind = self.boardHouses.index(spaceId)
+						self.boardHouses[ind] = None
 
-			# Execute the removal plan
-			houseCount = {}
-			for spaceId, buildCount in groupHouses:
-				houseCount[spaceId] = buildCount
-			for i in range(planRemoveCount):
 
-				spaceId = self.boardGroupBuildOrder[groupId].pop(-1)
-				space = self.board[spaceId]
-
-				if houseCount[spaceId] >= 5:
-					# Remove hotel
-					ind = self.boardHotels.index(spaceId)
-					self.boardHotels[ind] = None
-			
-					# Add 4 houses
-					for j in range(4):
-						self.boardHouses[freeHouses.pop()] = spaceId
-
-				else:
-					ind = self.boardHouses.index(spaceId)
-					self.boardHouses[ind] = None
+					sell += space['building_costs'] // 2
+					houseCount[spaceId] -= 1
 
 				if applyPayment:
-					self.playerMoney[groupOwner] += space['building_costs'] // 2
-				houseCount[spaceId] -= 1
+					self.playerMoney[groupOwner] += sell
 
-		return impossible, None, reasons
+			else:
+				# Total liquidation
+
+				# Allow hotel to be sold for the cost of 5 houses if sold entirely
+				# "All houses on one color-group may be sold at once, or they may 
+				# be sold one house at a time (one hotel equals five houses)..."
+
+				# This cannot fail as house models are not required, so no planning needed
+				sell = 0
+				for spaceId in self.boardGroupBuildOrder[groupId]:
+					space = self.board[spaceId]
+
+					for hi, hs in enumerate(self.boardHotels):
+						if hs == spaceId: 
+							self.boardHotels[hi] = None
+							sell += 5 * space['building_costs'] // 2
+					for hi, hs in enumerate(self.boardHouses):
+						if hs == spaceId: 
+							self.boardHouses[hi] = None
+							sell += space['building_costs'] // 2
+
+				if applyPayment:
+					self.playerMoney[groupOwner] += sell
+
+				self.boardGroupBuildOrder[groupId] = []
+
+		return impossible, None, reasons, 0
 
 def TrueOrFalseQuestion(questionText):
 	playerIn = None
