@@ -599,7 +599,7 @@ class PropertyGame(object):
 			# https://boardgames.stackexchange.com/questions/50930/monopoly-can-you-go-bankrupt-by-having-someone-else-go-bankrupt-on-you/
 			self.EnsurePlayment(playerOwedId, totalBill, 'bank')
 
-	def FreeTrading():
+	def FreeTrading(self):
 
 		while True:
 
@@ -956,10 +956,14 @@ class HumanInterface(object):
 
 	def TryRaiseMoney(self, moneyNeeded, gameState):
 		
+		#TODO Add option to sell buildings
+
 		unmortgaged = []
 		for spaceId, space in enumerate(gameState.board):
+
 			if self.playerNum == gameState.spaceOwners[spaceId] \
-				and not gameState.spaceMortgaged[spaceId]:
+				and not gameState.spaceMortgaged[spaceId] \
+				and gameState.NumHousesOnSpace(spaceId) == 0: # Property must be unimproved
 
 				unmortgaged.append(spaceId)
 
@@ -1011,6 +1015,8 @@ class HumanInterface(object):
 
 			if ch == -1: break
 			if ch == 1: self.DoTradingBuySellHouses(gameState)
+	
+			# TODO add trading interface
 
 	def DoTradingBuySellHouses(self, gameState):
 		completeGroups = gameState.GetCompleteHouseGroups(self.playerId)
