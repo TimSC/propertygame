@@ -1,40 +1,6 @@
 import random
 from propertygame import PropertyGame, GlobalInterface
-
-class TestInterface(object):
-	def __init__(self, playerNum):
-		self.playerNum = playerNum
-		self.Reset()
-
-	def Reset(self):
-		self.optionToBuy = None
-		self.getAuctionBid = None
-
-	def OptionToBuy(self, spaceId, gameState):
-		if self.optionToBuy is None:
-			raise RuntimeError()
-		return self.optionToBuy
-
-	def GetActionBid(self, spaceId, gameState):
-		if self.getAuctionBid is None:
-			raise RuntimeError()
-		return self.getAuctionBid
-
-	def UseGetOutOfJailCard(self, gameState):
-		pass
-
-	def PayJailFine(self, gameState):
-		pass
-
-	def TryRaiseMoney(self, moneyNeeded, gameState):
-		pass
-
-	def UnmortgageChoices(self, choices, gameState):
-		pass
-
-	def DoTrading(self, gameState):
-		return
-
+from interfaces import *
 
 def SetCardPosition(deck, cardName, position):
 	
