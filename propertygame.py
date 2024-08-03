@@ -903,6 +903,12 @@ class PropertyGame(object):
 
 		return impossible, None, reasons, 0
 
+	def GetPlayersUnbankrupt(self):
+		out = []
+		for i, b in enumerate(self.playerBankrupt):
+			if not b:
+				out.append(i)
+		return out
 
 if __name__=="__main__":
 
@@ -925,6 +931,14 @@ if __name__=="__main__":
 		propertyGame.EndPlayerTurn()
 		
 		propertyGame.FreeTrading()
+
+		activePlayers = propertyGame.GetPlayersUnbankrupt()
+		if len(activePlayers) == 1:
+			print ("Player {} wins!".format(activePlayers[0]))
+			break
+		elif len(activePlayers) == 0:
+			print ("Everyone is backrupt! No-one wins!".format(activePlayers[0]))
+			break
 
 		turnCount += 1
 
