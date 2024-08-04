@@ -374,8 +374,16 @@ class RandomInterface(object):
 		elif cho == 2:
 
 			# Random mortgage/unmortgage
-			#ownedProperties = 
-			pass
+			ownedProperties = []
+			for spaceId, owner in enumerate(gameState.spaceOwners):
+				if owner != self.playerNum: continue
+				if gameState.NumHousesInGroup(gameState.propertyInGroup[spaceId]) != 0: continue
+				space = gameState.board[spaceId]
+				if gameState.spaceMortgaged[spaceId]:
+					if gameState.playerMoney[self.playerNum] > int(1.1 * space['mortgage']):
+						gameState.UnmortgageSpace(spaceId)
+				else:
+					gameState.MortgageSpace(spaceId)
 
 		return True
 

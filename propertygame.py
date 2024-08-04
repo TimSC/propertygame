@@ -553,6 +553,15 @@ class PropertyGame(object):
 		self.playerMoney[ownerId] += space['mortgage']
 		self.spaceMortgaged[spaceId] = True
 
+	def UnmortgageSpace(self, spaceId):
+
+		if spaceId in self.propertyInGroup:
+			assert self.NumHousesInGroup(self.propertyInGroup[spaceId]) == 0
+		space = self.board[spaceId]
+		ownerId = self.spaceOwners[spaceId]
+		self.playerMoney[ownerId] -= int(1.1 * space['mortgage'])
+		self.spaceMortgaged[spaceId] = False
+
 	def PlayerGoesBankrupt(self, playerOwingId, playerOwedId):
 
 		self.globalInterface.Log("Player {} goes backrupt and pays everything to {}".format(playerOwingId, playerOwedId))
