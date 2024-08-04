@@ -316,6 +316,7 @@ class PropertyGame(object):
 		if 'pay_per_house' in drawCard:
 			count = 0
 			for spaceId in self.boardHouses:
+				if spaceId is None: continue
 				ownerId = self.spaceOwners[spaceId]
 				if ownerId == playerId:
 					count += 1
@@ -326,6 +327,7 @@ class PropertyGame(object):
 		if 'pay_per_hotel' in drawCard:
 			count = 0
 			for spaceId in self.boardHotels:
+				if spaceId is None: continue
 				ownerId = self.spaceOwners[spaceId]
 				if ownerId == playerId:
 					count += 1
@@ -435,6 +437,10 @@ class PropertyGame(object):
 		self.globalInterface.Log("Auction started for {}".format(space['name']))
 		bids = []
 		for playerId, pl in enumerate(self.playerInterfaces):
+			# only non backcrupt players can bid
+			backrupted = self.playerBankrupt[playerId]
+			if backrupted: continue
+
 			bid = int(pl.GetActionBid(spaceId, self))
 			bids.append((playerId, bid))
 
@@ -496,9 +502,11 @@ class PropertyGame(object):
 
 	def PlayerMaxMoneyThatCanBeRaised(self, playerId):
 
+		assert playerId is not None
 		# Plan to sell all houses (so there are more houses available to replace hotels)
 		totalBuildings = 0
 		for spaceId in self.boardHouses:
+			if spaceId is None: continue
 			ownerId = self.spaceOwners[spaceId]
 			if owner != playerId: continue
 
@@ -509,6 +517,7 @@ class PropertyGame(object):
 
 		# Plan to sell all hotels
 		for spaceId in self.boardHotels:
+			if spaceId is None: continue
 			ownerId = self.spaceOwners[spaceId]
 			if owner != playerId: continue
 
@@ -519,7 +528,7 @@ class PropertyGame(object):
 
 		# Plan to ortgage everything
 		totalMortgage = 0
-		for spaceId, space in self.board:
+		for spaceId, space in enumerate(self.board):
 			owner = self.spaceOwners[spaceId]
 			if owner != playerId: continue
 			if self.spaceMortgaged[spaceId]: continue
@@ -530,7 +539,7 @@ class PropertyGame(object):
 
 
 	def MortgageSpace(self, spaceId):
-		assert NumHousesOnSpace(spaceId) == 0
+		assert self.NumHousesOnSpace(spaceId) == 0
 		space = self.board[spaceId]
 		ownerId = self.spaceOwners[spaceId]
 		self.playerMoney[ownerId] += space['mortgage']
@@ -563,6 +572,7 @@ class PropertyGame(object):
 
 		# Transfer all property to owed player
 		mortgaged = []
+		toauction = []
 		for spaceId, space in enumerate(self.board):
 			owner = self.spaceOwners[spaceId]
 			if owner == playerOwingId:
@@ -575,6 +585,7 @@ class PropertyGame(object):
 				else:
 					self.spaceOwners[spaceId] = None
 					self.spaceMortgaged[spaceId] = False
+					toauction.append(spaceId)
 		
 		if playerOwedId != 'bank':
 
@@ -599,19 +610,37 @@ class PropertyGame(object):
 			# Paying for interest on properties following a bankruptcy could trigger another bankruptcy
 			# https://boardgames.stackexchange.com/questions/50930/monopoly-can-you-go-bankrupt-by-having-someone-else-go-bankrupt-on-you/
 			self.EnsurePlayment(playerOwedId, totalBill, 'bank')
-
 		else:
-			# TODO The bank auctions all property.
-			pass
+
+			# If the bank is owed, the bank auctions all property.
+			random.shuffle(spaceId)
+
+			for spaceId in toauction:
+				self.AuctionProperty(spaceId)
+
 
 	def FreeTrading(self):
 
-		while True:
+		show = False
+		for playerId, pl in enumerate(self.playerInterfaces):
+			show |= pl.ShowTradePlayerSelect()
 
-			playerId = self.globalInterface.GetPlayerIdToTrade()
-			if playerId == -1: break
+		if show:
+			while True:
+				playerId = self.globalInterface.GetPlayeIdToTrade()
+				if playerId == -1: break
+				if self.playerBankrupt[playerId]: continue
 
-			self.playerInterfaces[playerId].DoTrading(self)
+				self.playerInterfaces[playerId].DoTrading(self)
+
+		else:
+			# All players are AIs
+			complete = False
+			while not complete:
+				complete = True
+				for playerId, pl in enumerate(self.playerInterfaces):
+					if self.playerBankrupt[playerId]: continue
+					complete &= self.playerInterfaces[playerId].DoTrading(self)
 
 	def GetCompleteHouseGroups(self, ownedBy=None):
 		
@@ -913,9 +942,18 @@ class PropertyGame(object):
 			if not b:
 				out.append(i)
 		return out
+	
+	def ProcessTrade(self, sellPlayerId, buyerPlayerId, spaceId, money):
 
-if __name__=="__main__":
+		# TODO implement more complex trades
+		assert self.playerMoney[buyerPlayerId] >= money
+		assert self.spaceOwners[spaceId] == sellPlayerId
+		self.spaceOwners[spaceId] = buyerPlayerId
 
+		self.playerMoney[buyerPlayerId] -= money
+		self.playerMoney[sellPlayerId] += money
+
+def BasicGameLoop():
 	playerInterfaces = [RandomInterface(0)]
 	while len(playerInterfaces) < 3:
 		playerInterfaces.append(RandomInterface(len(playerInterfaces)))
@@ -940,9 +978,14 @@ if __name__=="__main__":
 		if len(activePlayers) == 1:
 			print ("Player {} wins!".format(activePlayers[0]))
 			break
-		elif len(activePlayers) == 0:
+		elif len(activePlayers) == 0: # Possible due to one backruptcy triggering another backruptcy.
 			print ("Everyone is backrupt! No-one wins!".format(activePlayers[0]))
 			break
 
 		turnCount += 1
+
+
+if __name__=="__main__":
+
+	BasicGameLoop()
 
