@@ -275,6 +275,9 @@ class RandomInterface(object):
 			if self.playerNum == gameState.spaceOwners[spaceId] \
 				and not gameState.spaceMortgaged[spaceId]:
 
+				if spaceId in gameState.propertyInGroup \
+					and gameState.NumHousesInGroup(gameState.propertyInGroup[spaceId]) != 0: continue
+
 				unmortgaged.append(spaceId)
 
 		while len(unmortgaged) > 0:
@@ -305,6 +308,7 @@ class RandomInterface(object):
 			for spaceId, space in enumerate(gameState.board):
 				ownerId = gameState.spaceOwners[spaceId]
 				if ownerId is None: continue
+				if spaceId in gameState.propertyInGroup and gameState.NumHousesInGroup(gameState.propertyInGroup[spaceId]) != 0: continue
 				if ownerId == self.playerNum:
 					sellable.append(spaceId)
 				else:
@@ -322,15 +326,15 @@ class RandomInterface(object):
 					oppenentId = random.choice(opponents)
 					oppInterface = gameState.playerInterfaces[oppenentId]
 
-				if len(sellable) > 0: #Sell
+				if len(sellable) > 0 and len(opponents) > 0: #Sell
 					spaceId = random.choice(sellable)
 					space = gameState.board[spaceId]
-					print (space)
+
 					money = int(space['price'] * random.random() * 1.5)
 
 					accepted = oppInterface.OfferTrade(self.playerNum, spaceId, True, money)
 
-					if accepted:
+					if accepted and gameState.playerMoney[oppenentId] >= money:
 						gameState.ProcessTrade(self.playerNum, oppenentId, spaceId, money)
 			else:
 				if len(buyable) > 0: #Buy
@@ -338,13 +342,40 @@ class RandomInterface(object):
 					space = gameState.board[spaceId]
 					ownerId = gameState.spaceOwners[spaceId]
 					oppInterface = gameState.playerInterfaces[ownerId]
-					print (space)
+
 					money = int(space['price'] * random.random() * 1.5)
 
 					accepted = oppInterface.OfferTrade(self.playerNum, spaceId, False, money)
 
-					if accepted:
+					if accepted and gameState.playerMoney[self.playerNum] >= money:
 						gameState.ProcessTrade(ownerId, self.playerNum, spaceId, money)
+
+		elif cho == 1:
+
+			# Random buy/sell houses
+			groupIds = gameState.GetCompleteHouseGroups(self.playerNum)
+
+			allUnmortgaged = []
+			for gi in groupIds:
+				if gameState.IsGroupAllUnmortgaged(gi):
+					allUnmortgaged.append(gi)
+
+			if len(allUnmortgaged) > 0:
+				groupId = random.choice(allUnmortgaged)
+
+				group = gameState.propertyGroup[groupId]
+				numBuildings = random.randint(0, 5 * len(group))
+
+				impossible, numAllowed, reasons, planCost = gameState.SetNumBuildingsInGroup(groupId, numBuildings, planOnly=True)
+		
+				if not impossible:
+					gameState.SetNumBuildingsInGroup(groupId, numBuildings)
+
+		elif cho == 2:
+
+			# Random mortgage/unmortgage
+			#ownedProperties = 
+			pass
 
 		return True
 

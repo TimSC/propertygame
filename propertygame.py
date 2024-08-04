@@ -156,6 +156,8 @@ class PropertyGame(object):
 				break
 			if justReleasedFromJail:
 				break
+			if self.playerBankrupt[self.playerTurn]:
+				break
 			if not rolledDouble:
 				break # End turn if not a double roll
 			else:
@@ -444,6 +446,8 @@ class PropertyGame(object):
 			bid = int(pl.GetActionBid(spaceId, self))
 			bids.append((playerId, bid))
 
+		print ("bids", bids)
+		assert len(bids) >= 2
 		bids.sort(key = lambda x: x[1])		
 
 		# Give the property to the highest bidder, for 1 more than the second highest bid
@@ -508,29 +512,29 @@ class PropertyGame(object):
 		for spaceId in self.boardHouses:
 			if spaceId is None: continue
 			ownerId = self.spaceOwners[spaceId]
-			if owner != playerId: continue
+			if ownerId != playerId: continue
 
 			propGroupId = self.propertyInGroup[spaceId]
 			
-			impossible, numAllowed, reasons, planCost = SetNumBuildingsInGroup(propGroupId, 0, planOnly = True)
+			impossible, numAllowed, reasons, planCost = self.SetNumBuildingsInGroup(propGroupId, 0, planOnly = True)
 			totalBuildings += planCost
 
 		# Plan to sell all hotels
 		for spaceId in self.boardHotels:
 			if spaceId is None: continue
 			ownerId = self.spaceOwners[spaceId]
-			if owner != playerId: continue
+			if ownerId != playerId: continue
 
 			propGroupId = self.propertyInGroup[spaceId]
 			
-			impossible, numAllowed, reasons, planCost = SetNumBuildingsInGroup(propGroupId, 0, planOnly = True)
+			impossible, numAllowed, reasons, planCost = self.SetNumBuildingsInGroup(propGroupId, 0, planOnly = True)
 			totalBuildings += planCost
 
-		# Plan to ortgage everything
+		# Plan to mortgage everything
 		totalMortgage = 0
 		for spaceId, space in enumerate(self.board):
-			owner = self.spaceOwners[spaceId]
-			if owner != playerId: continue
+			ownerId = self.spaceOwners[spaceId]
+			if ownerId != playerId: continue
 			if self.spaceMortgaged[spaceId]: continue
 
 			totalMortgage += space["mortgage"]
@@ -539,7 +543,9 @@ class PropertyGame(object):
 
 
 	def MortgageSpace(self, spaceId):
-		assert self.NumHousesOnSpace(spaceId) == 0
+
+		if spaceId in self.propertyInGroup:
+			assert self.NumHousesInGroup(self.propertyInGroup[spaceId]) == 0
 		space = self.board[spaceId]
 		ownerId = self.spaceOwners[spaceId]
 		self.playerMoney[ownerId] += space['mortgage']
@@ -564,7 +570,7 @@ class PropertyGame(object):
 		# Remove all houses and hotels for cash
 		for spaceId, space in enumerate(self.board):
 			owner = self.spaceOwners[spaceId]
-			if owner == playerOwingId:
+			if owner == playerOwingId and spaceId in self.propertyInGroup and self.NumHousesOnSpace(spaceId) > 0:
 				propGroupId = self.propertyInGroup[spaceId]
 				self.SetNumBuildingsInGroup(propGroupId, 0)
 
@@ -613,10 +619,15 @@ class PropertyGame(object):
 		else:
 
 			# If the bank is owed, the bank auctions all property.
-			random.shuffle(spaceId)
+			random.shuffle(toauction)
 
 			for spaceId in toauction:
-				self.AuctionProperty(spaceId)
+				space = self.board[spaceId]
+				activePlayers = self.GetPlayersUnbankrupt() # Players can bankcrupt during an auction
+
+				if len(activePlayers) > 1:
+					self.globalInterface.Log("Start auction of {} with {} potential bidders".format(space['name'], activePlayers))
+					self.AuctionProperty(spaceId)
 
 
 	def FreeTrading(self):
@@ -645,10 +656,11 @@ class PropertyGame(object):
 	def GetCompleteHouseGroups(self, ownedBy=None):
 		
 		completeGroups = []
-		for groupId, group in self.propertyGroup:
+		for groupId, group in self.propertyGroup.items():
 			firstSpace = None
 			groupOwnedBy = None
 			groupCheckedMembers = []
+
 			for spaceId in group:
 				space = self.board[spaceId]
 				owner = self.spaceOwners[spaceId]
@@ -665,7 +677,8 @@ class PropertyGame(object):
 				groupCheckedMembers.append(spaceId)
 
 			fullGroup = len(groupCheckedMembers) == len(group)
-			completeGroups.append(groupId)
+			if fullGroup:
+				completeGroups.append(groupId)
 
 		return completeGroups
 
@@ -760,6 +773,7 @@ class PropertyGame(object):
 		freeHouses, freeHotels = self.GetFreeBuildings()
 		
 		existingHouses, groupHouses = self.NumHousesInGroup(groupId)
+		print (groupId, existingHouses, self.boardGroupBuildOrder[groupId])
 		assert existingHouses == len(self.boardGroupBuildOrder[groupId])
 
 		groupHouses.sort(key = lambda x: (-x[0], x[1]))	# Put houses on expensive properties first
@@ -838,7 +852,7 @@ class PropertyGame(object):
 				assert not bankrupted # Checks above should block bankruptcy
 			
 			existingHouses2, groupHouses2 = self.NumHousesInGroup(groupId)
-
+			assert existingHouses2 == len(self.boardGroupBuildOrder[groupId])
 			assert existingHouses2 == numBuildings
 			return impossible, None, reasons, 0
 
@@ -934,6 +948,9 @@ class PropertyGame(object):
 
 				self.boardGroupBuildOrder[groupId] = []
 
+		existingHouses2, groupHouses2 = self.NumHousesInGroup(groupId)
+		assert existingHouses2 == len(self.boardGroupBuildOrder[groupId])
+
 		return impossible, None, reasons, 0
 
 	def GetPlayersUnbankrupt(self):
@@ -948,12 +965,15 @@ class PropertyGame(object):
 		# TODO implement more complex trades
 		assert self.playerMoney[buyerPlayerId] >= money
 		assert self.spaceOwners[spaceId] == sellPlayerId
+		if spaceId in self.propertyInGroup:
+			assert self.NumHousesInGroup(self.propertyInGroup[spaceId]) == 0
 		self.spaceOwners[spaceId] = buyerPlayerId
 
 		self.playerMoney[buyerPlayerId] -= money
 		self.playerMoney[sellPlayerId] += money
 
-def BasicGameLoop():
+def BasicGameLoop(turnLimit = None):
+
 	playerInterfaces = [RandomInterface(0)]
 	while len(playerInterfaces) < 3:
 		playerInterfaces.append(RandomInterface(len(playerInterfaces)))
@@ -983,9 +1003,11 @@ def BasicGameLoop():
 			break
 
 		turnCount += 1
-
+		if turnLimit is not None and turnCount >= turnLimit:
+			break
 
 if __name__=="__main__":
 
-	BasicGameLoop()
+	while True:
+		BasicGameLoop(1000)
 
