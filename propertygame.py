@@ -158,6 +158,9 @@ class PropertyGame(object):
 				break
 			if self.playerBankrupt[self.playerTurn]:
 				break
+			activePlayers = self.GetPlayersUnbankrupt() # Players can bankcrupt during an auction
+			if len(activePlayers) < 2:
+				break # Game effectively over, so end turn
 			if not rolledDouble:
 				break # End turn if not a double roll
 			else:
@@ -446,7 +449,6 @@ class PropertyGame(object):
 			bid = int(pl.GetActionBid(spaceId, self))
 			bids.append((playerId, bid))
 
-		print ("bids", bids)
 		assert len(bids) >= 2
 		bids.sort(key = lambda x: x[1])		
 
@@ -574,7 +576,18 @@ class PropertyGame(object):
 				propGroupId = self.propertyInGroup[spaceId]
 				self.SetNumBuildingsInGroup(propGroupId, 0)
 
-		self.boardHotels = []
+		# Check all buildings have been returned
+		for i, hs in enumerate(self.boardHotels):
+			if hs is None: continue
+			owner = self.spaceOwners[hs]
+			if owner != playerOwingId: continue
+			assert self.boardHotels[i] is None
+
+		for i, hs in enumerate(self.boardHouses):
+			if hs is None: continue
+			owner = self.spaceOwners[hs]
+			if owner != playerOwingId: continue
+			assert self.boardHouses[i] is None
 
 		# Transfer all property to owed player
 		mortgaged = []
@@ -593,6 +606,10 @@ class PropertyGame(object):
 					self.spaceMortgaged[spaceId] = False
 					toauction.append(spaceId)
 		
+		for groupId in self.propertyGroup:
+			existingHouses, groupHouses = self.NumHousesInGroup(groupId)
+			assert existingHouses == len(self.boardGroupBuildOrder[groupId])
+
 		if playerOwedId != 'bank':
 
 			# The receiving player gets to choose if they unmortgage properties
@@ -626,9 +643,8 @@ class PropertyGame(object):
 				activePlayers = self.GetPlayersUnbankrupt() # Players can bankcrupt during an auction
 
 				if len(activePlayers) > 1:
-					self.globalInterface.Log("Start auction of {} with {} potential bidders".format(space['name'], activePlayers))
+					self.globalInterface.Log("Start auction of {} with {} potential bidders".format(space['name'], len(activePlayers)))
 					self.AuctionProperty(spaceId)
-
 
 	def FreeTrading(self):
 
@@ -773,7 +789,6 @@ class PropertyGame(object):
 		freeHouses, freeHotels = self.GetFreeBuildings()
 		
 		existingHouses, groupHouses = self.NumHousesInGroup(groupId)
-		print (groupId, existingHouses, self.boardGroupBuildOrder[groupId])
 		assert existingHouses == len(self.boardGroupBuildOrder[groupId])
 
 		groupHouses.sort(key = lambda x: (-x[0], x[1]))	# Put houses on expensive properties first
@@ -999,7 +1014,7 @@ def BasicGameLoop(turnLimit = None):
 			print ("Player {} wins!".format(activePlayers[0]))
 			break
 		elif len(activePlayers) == 0: # Possible due to one backruptcy triggering another backruptcy.
-			print ("Everyone is backrupt! No-one wins!".format(activePlayers[0]))
+			print ("Everyone is backrupt! No-one wins!")
 			break
 
 		turnCount += 1
