@@ -453,11 +453,28 @@ def CheckNormalGameplay():
 	propertyGame.EndPlayerTurn()
 
 
+def CheckAdvanceToGo():
+
+	# Check advance to go awards correct money
+	playerInterfaces = [TestInterface(0), TestInterface(1), TestInterface(2)]
+
+	globalInterface = GlobalInterface()
+
+	propertyGame = PropertyGame(globalInterface, playerInterfaces)
+	propertyGame.playerTurn = 0
+
+	SetCardPosition(propertyGame.chanceCards, "AdvanceToGo", 0)
+
+	propertyGame.DoTurn([(2,5)])
+	assert propertyGame.playerMoney[0] == 1700
+	
+
 def Test():
 
 	CheckBuildingCode()
 	CheckRemoveBuildings()
 	CheckNormalGameplay()
+	CheckAdvanceToGo()
 
 if __name__=="__main__":
 	Test()

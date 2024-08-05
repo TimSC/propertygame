@@ -145,11 +145,13 @@ class PropertyGame(object):
 			# Check if we pass go
 			for spaceId in via:
 				space = self.board[spaceId]
+
 				if 'income_on_pass' in space:
 					self.playerMoney[self.playerTurn] += space['income_on_pass']
 					self.globalInterface.Log("Passed {}, gained {}".format(space['name'], space['income_on_pass']))
 
 			self.playerPositions[self.playerTurn] = destinationSpaceId
+
 			turnEnded = self.PlayerLandedOnSpace(self.playerTurn, destinationSpaceId, dieRoll1+dieRoll2)
 
 			if turnEnded:
@@ -175,7 +177,8 @@ class PropertyGame(object):
 		if 'type' in destinationSpace:
 			ty = destinationSpace['type']
 
-			if ty == 'go':		
+
+			if ty == 'go':
 				self.playerMoney[playerId] += destinationSpace['income_on_pass']
 				self.globalInterface.Log("Landed on {}, gained {}".format(destinationSpace['name'], destinationSpace['income_on_pass']))
 
@@ -279,7 +282,7 @@ class PropertyGame(object):
 						cursor = 0
 
 					space = self.board[cursor]
-					if 'income_on_pass' in space:
+					if 'income_on_pass' in space and cursor != destinationId:
 						self.playerMoney[playerId] += space['income_on_pass']
 						self.globalInterface.Log("Passed {}, gained {}".format(space['name'], space['income_on_pass']))
 
@@ -663,7 +666,7 @@ class PropertyGame(object):
 
 		if show:
 			while True:
-				playerId = self.globalInterface.GetPlayeIdToTrade()
+				playerId = self.globalInterface.GetPlayerIdToTrade()
 				if playerId == -1: break
 				if self.playerBankrupt[playerId]: continue
 
@@ -998,7 +1001,7 @@ class PropertyGame(object):
 
 def BasicGameLoop(turnLimit = None):
 
-	playerInterfaces = [RandomInterface(0)]
+	playerInterfaces = [HumanInterface(0)]
 	while len(playerInterfaces) < 3:
 		playerInterfaces.append(RandomInterface(len(playerInterfaces)))
 

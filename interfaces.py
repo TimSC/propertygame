@@ -137,7 +137,7 @@ class HumanInterface(object):
 			selectable = []
 			for spaceId, space in enumerate(gameState.board):
 				ownerId = gameState.spaceOwners[spaceId]
-				if ownerId is not None: continue
+				if ownerId is None: continue
 				print (spaceId, space['name'], ownerId)
 				selectable.append(spaceId)
 
@@ -154,12 +154,12 @@ class HumanInterface(object):
 				if p2 == self.playerNum:
 					print ("Can't trade with self")
 					continue
-				if self.playerBankrupt[p2]:
+				if gameState.playerBankrupt[p2]:
 					print ("Player is backrupt")
 					continue
 
 				ownerId = gameState.spaceOwners[spaceId]
-				oppInterface = self.playerInterfaces[p2]
+				oppInterface = gameState.playerInterfaces[p2]
 				accepted = False
 
 				if ownerId == self.playerNum:
@@ -172,7 +172,7 @@ class HumanInterface(object):
 					accepted = oppInterface.OfferTrade(self.playerNum, ch, True, offer)
 					
 					if accepted:
-						if self.playerMoney[p2] >= offer:
+						if gameState.playerMoney[p2] >= offer:
 							gameState.ProcessTrade(self.playerNum, p2, ch, offer)
 						else:
 							print ("Player cannot afford sale")
@@ -186,7 +186,7 @@ class HumanInterface(object):
 					accepted = oppInterface.OfferTrade(self.playerNum, ch, False, offer)
 
 					if accepted:
-						if self.playerMoney[self.playerNum] >= offer:
+						if gameState.playerMoney[self.playerNum] >= offer:
 							gameState.ProcessTrade(p2, self.playerNum, ch, offer)
 						else:
 							print ("Player cannot afford sale")							
@@ -223,14 +223,14 @@ class HumanInterface(object):
 		while True:
 
 			print ("Group", groupId)
-			group = self.propertyGroup[groupId]
+			group = gameState.propertyGroup[groupId]
 			
 			freeHouses, freeHotels = gameState.GetFreeBuildings()
 			countHouses, countHotels = len(freeHouses), len(freeHotels)
 
 			for spaceId in group:
-				space = self.board[spaceId]
-				print (spaceId, space['name'], self.NumHousesOnSpace(spaceId))
+				space = gameState.board[spaceId]
+				print (spaceId, space['name'], gameState.NumHousesOnSpace(spaceId))
 
 			print ("{} houses and {} hotels free".format(countHouses, countHotels))
 
@@ -246,7 +246,7 @@ class HumanInterface(object):
 
 		verb = "sell"
 		if isSellOffer: verb = "buy"
-		space = self.board[spaceId]
+		space = gameState.board[spaceId]
 		
 		questionText = "Player {}, would you like to {} {} for {}?".format(self.playerNum, space['name'], moneyOffer)
 		return TrueOrFalseQuestion(questionText)
