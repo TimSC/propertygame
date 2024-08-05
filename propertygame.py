@@ -803,7 +803,7 @@ class PropertyGame(object):
 		existingHouses, groupHouses = self.NumHousesInGroup(groupId)
 		assert existingHouses == len(self.boardGroupBuildOrder[groupId])
 
-		groupHouses.sort(key = lambda x: (-x[0], x[1]))	# Put houses on expensive properties first
+		groupHouses.sort(key = lambda x: (x[1], -x[0]))	# Put houses on expensive properties first
 		impossible = False
 		reasons = []
 
@@ -881,6 +881,8 @@ class PropertyGame(object):
 			existingHouses2, groupHouses2 = self.NumHousesInGroup(groupId)
 			assert existingHouses2 == len(self.boardGroupBuildOrder[groupId])
 			assert existingHouses2 == numBuildings
+			diffHouses = max([g[1] for g in groupHouses2]) - min([g[1] for g in groupHouses2])
+			assert diffHouses <= 1 # Add houses as evenly as possible
 			return impossible, None, reasons, 0
 
 		else:
@@ -977,6 +979,8 @@ class PropertyGame(object):
 
 		existingHouses2, groupHouses2 = self.NumHousesInGroup(groupId)
 		assert existingHouses2 == len(self.boardGroupBuildOrder[groupId])
+		diffHouses = max([g[1] for g in groupHouses2]) - min([g[1] for g in groupHouses2])
+		assert diffHouses <= 1 # Add houses as evenly as possible
 
 		return impossible, None, reasons, 0
 
@@ -1004,16 +1008,13 @@ class PropertyGame(object):
 
 def BasicGameLoop(turnLimit = None):
 
-	playerInterfaces = [HumanInterface(0)]
+	playerInterfaces = [RandomInterface(0)]
 	while len(playerInterfaces) < 3:
 		playerInterfaces.append(RandomInterface(len(playerInterfaces)))
 
 	globalInterface = GlobalInterface()
 
 	propertyGame = PropertyGame(globalInterface, playerInterfaces)
-
-	for spaceId in propertyGame.propertyGroup[1]:
-		propertyGame.spaceOwners[spaceId] = 0
 
 	turnCount = 0
 	while True:
