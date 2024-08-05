@@ -1004,13 +1004,16 @@ class PropertyGame(object):
 
 def BasicGameLoop(turnLimit = None):
 
-	playerInterfaces = [RandomInterface(0)]
+	playerInterfaces = [HumanInterface(0)]
 	while len(playerInterfaces) < 3:
 		playerInterfaces.append(RandomInterface(len(playerInterfaces)))
 
 	globalInterface = GlobalInterface()
 
 	propertyGame = PropertyGame(globalInterface, playerInterfaces)
+
+	for spaceId in propertyGame.propertyGroup[1]:
+		propertyGame.spaceOwners[spaceId] = 0
 
 	turnCount = 0
 	while True:

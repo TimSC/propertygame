@@ -125,7 +125,7 @@ class HumanInterface(object):
 	def DoTrading(self, gameState):
 		while True:
 			print ("1. Buy/sell houses and hotels")
-			print ("2. Mortgage/unmortgage houses")
+			print ("2. Mortgage/unmortgage properties")
 			print ("3. Propose a trade with other players")
 			print ("-1. Done")
 
@@ -221,15 +221,17 @@ class HumanInterface(object):
 
 		while True:
 			print ("Choose housing group:")
-			for group in completeGroups:
-				print (groupId, end="")
+			for groupId in completeGroups:
+				print ("Group:", groupId, end="")
 				if not gameState.IsGroupAllUnmortgaged(groupId):
-					print (" Mortgaged")
+					print (" Mortgaged", end="")
 					continue
 
-				for spaceId in propertyGroup[groupId]:
-					print (" {}".format(gameState.NumHousesOnSpace()), end="")
-	
+				print (" Num buildings: ", end="")
+				for spaceId in gameState.propertyGroup[groupId]:
+					print (" {}".format(gameState.NumHousesOnSpace(spaceId)), end="")
+				print ("")	
+
 			print ("-1. Done")
 
 			ch = IntegerQuestion("Group to change? (-1 to quit)")
@@ -254,10 +256,10 @@ class HumanInterface(object):
 
 			print ("{} houses and {} hotels free".format(countHouses, countHotels))
 
-			ch = IntegerQuestion("Set number of houses? (-1 to quit)")
+			numBuildings = IntegerQuestion("Set number of houses? (-1 to quit)")
 			
-			if ch == -1: break
-			gameState.SetNumBuildingsInGroup(groupId, numBuildiungs)
+			if numBuildings == -1: break
+			gameState.SetNumBuildingsInGroup(groupId, numBuildings)
 
 	def ShowTradePlayerSelect(self):
 		return True

@@ -467,7 +467,24 @@ def CheckAdvanceToGo():
 
 	propertyGame.DoTurn([(2,5)])
 	assert propertyGame.playerMoney[0] == 1700
-	
+
+	# Check passing go multiple times in a turn (four times)
+	# Inspired by https://www.quora.com/How-many-times-can-a-player-pass-Go-and-collect-200-during-his-her-turn-in-the-game-of-Monopoly
+	playerInterfaces = [TestInterface(0), TestInterface(1), TestInterface(2)]
+	playerInterfaces[0].optionToBuy = 1
+
+	globalInterface = GlobalInterface()
+
+	propertyGame = PropertyGame(globalInterface, playerInterfaces)
+	propertyGame.playerTurn = 0
+	propertyGame.playerPositions[0] = 39
+
+	SetCardPosition(propertyGame.chanceCards, "TripBoardwalk", 0)
+	SetCardPosition(propertyGame.chanceCards, "AdvanceToGo", 1)
+	SetCardPosition(propertyGame.chanceCards, "TripReadingTrainStation", 2)
+
+	propertyGame.DoTurn([(4,4), (4,4), (1,6)])
+	assert propertyGame.playerMoney[0] == 1500 + 4*200 - 400 - 200
 
 def Test():
 
