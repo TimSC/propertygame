@@ -550,7 +550,7 @@ class PropertyGame(object):
 	def MortgageSpace(self, spaceId):
 
 		if spaceId in self.propertyInGroup:
-			assert self.NumHousesInGroup(self.propertyInGroup[spaceId]) == 0
+			assert self.NumHousesInGroup(self.propertyInGroup[spaceId])[0] == 0
 		space = self.board[spaceId]
 		ownerId = self.spaceOwners[spaceId]
 		self.playerMoney[ownerId] += space['mortgage']
@@ -559,7 +559,7 @@ class PropertyGame(object):
 	def UnmortgageSpace(self, spaceId):
 
 		if spaceId in self.propertyInGroup:
-			assert self.NumHousesInGroup(self.propertyInGroup[spaceId]) == 0
+			assert self.NumHousesInGroup(self.propertyInGroup[spaceId])[0] == 0
 		space = self.board[spaceId]
 		ownerId = self.spaceOwners[spaceId]
 		self.playerMoney[ownerId] -= int(1.1 * space['mortgage'])
@@ -989,11 +989,14 @@ class PropertyGame(object):
 	
 	def ProcessTrade(self, sellPlayerId, buyerPlayerId, spaceId, money):
 
+		space = self.board[spaceId]
+		self.globalInterface.Log("Player {} sold {} to player {} for {}".format(sellPlayerId, space['name'], buyerPlayerId, money))
+
 		# TODO implement more complex trades
 		assert self.playerMoney[buyerPlayerId] >= money
 		assert self.spaceOwners[spaceId] == sellPlayerId
 		if spaceId in self.propertyInGroup:
-			assert self.NumHousesInGroup(self.propertyInGroup[spaceId]) == 0
+			assert self.NumHousesInGroup(self.propertyInGroup[spaceId])[0] == 0
 		self.spaceOwners[spaceId] = buyerPlayerId
 
 		self.playerMoney[buyerPlayerId] -= money
@@ -1001,7 +1004,7 @@ class PropertyGame(object):
 
 def BasicGameLoop(turnLimit = None):
 
-	playerInterfaces = [HumanInterface(0)]
+	playerInterfaces = [RandomInterface(0)]
 	while len(playerInterfaces) < 3:
 		playerInterfaces.append(RandomInterface(len(playerInterfaces)))
 

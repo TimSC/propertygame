@@ -66,27 +66,37 @@ class HumanInterface(object):
 			if ch == 2: self.MortgageUnmortgageMenu(gameState)
 	
 	def MortgageUnmortgageMenu(self, gameState):
-		unmortgaged = []
-		for spaceId, space in enumerate(gameState.board):
 
-			if self.playerNum == gameState.spaceOwners[spaceId] \
-				and not gameState.spaceMortgaged[spaceId] \
-				and gameState.NumHousesOnSpace(spaceId) == 0: # Property must be unimproved
+		while True:
 
-				unmortgaged.append(spaceId)
+			selectable = []
+			for spaceId, space in enumerate(gameState.board):
 
-		while len(unmortgaged) > 0:
+				if self.playerNum == gameState.spaceOwners[spaceId] \
+					and not gameState.spaceMortgaged[spaceId] \
+					and gameState.NumHousesOnSpace(spaceId) == 0: # Property must be unimproved
+
+					selectable.append(spaceId)
+
+				if self.playerNum == gameState.spaceOwners[spaceId] \
+					and gameState.spaceMortgaged[spaceId]:
+
+					selectable.append(spaceId)
 			
-			print ("Player {}, choose property to mortgage:".format(self.playerNum))
-			for choiceId, spaceId in enumerate(unmortgaged):
-				space = gameState.board[spaceId]
-				print (choiceId, space)
-			ind = IntegerQuestion("Index?")
-			spaceId = unmortgaged.pop(ind)
-			gameState.MortgageSpace(spaceId)
+			if len(selectable) == 0: break
 
-			if gameState.playerMoney[self.playerNum] >= moneyNeeded:
-				break # Stop now we have enough cash
+			print ("Player {}, choose property to toggle mortgage:".format(self.playerNum))
+			for spaceId in selectable:
+				space = gameState.board[spaceId]
+				print (spaceId, space['name'], gameState.spaceMortgaged[spaceId])
+			ind = IntegerQuestion("Index (-1 to abort)?")
+			if ind == -1: break
+			if ind not in selectable: continue
+
+			if gameState.spaceMortgaged[spaceId]:
+				gameState.UnmortgageSpace(spaceId)	
+			else:
+				gameState.MortgageSpace(spaceId)
 
 	def UnmortgageChoices(self, choices, gameState):
 		
@@ -144,26 +154,29 @@ class HumanInterface(object):
 			ch = IntegerQuestion("Select property? (-1 to quit)")
 
 			if ch in selectable:
-				p2 = IntegerQuestion("Trade with player? (-1 to about)")
-				if p2 == -1:
-					print ("Trade Aborted")
-					continue
-				if p2 < 0 or p2 >= gameState.numPlayers:
-					print ("Invalid player Id")
-					continue
-				if p2 == self.playerNum:
-					print ("Can't trade with self")
-					continue
-				if gameState.playerBankrupt[p2]:
-					print ("Player is backrupt")
-					continue
 
-				ownerId = gameState.spaceOwners[spaceId]
-				oppInterface = gameState.playerInterfaces[p2]
+				ownerId = gameState.spaceOwners[ch]
+				space = gameState.board[ch]
 				accepted = False
 
 				if ownerId == self.playerNum:
-					offer = IntegerQuestion("Offer to sell for? (-1 to abort)")
+
+					p2 = IntegerQuestion("Trade with player? (-1 to about)")
+					if p2 == -1:
+						print ("Trade Aborted")
+						continue
+					if p2 < 0 or p2 >= gameState.numPlayers:
+						print ("Invalid player Id")
+						continue
+					if p2 == self.playerNum:
+						print ("Can't trade with self")
+						continue
+					if gameState.playerBankrupt[p2]:
+						print ("Player is backrupt")
+						continue
+					oppInterface = gameState.playerInterfaces[p2]
+
+					offer = IntegerQuestion("Offer to sell {} for? (-1 to abort)".format(space['name']))
 					if offer < 0:
 						# Tim note: I used to play an AI on C64 what didn't check for this
 						# and always accepted a negative trade!
@@ -176,10 +189,14 @@ class HumanInterface(object):
 							gameState.ProcessTrade(self.playerNum, p2, ch, offer)
 						else:
 							print ("Player cannot afford sale")
+					else:
+						print ("Player rejected proposed trade")
 
 				else:
-					off = IntegerQuestion("Offer to buy for? (-1 to abort)")
-					if off < 0:
+					oppInterface = gameState.playerInterfaces[ownerId]
+
+					offer = IntegerQuestion("Offer to buy {} from player {} for? (-1 to abort)".format(space['name'], ownerId))
+					if offer < 0:
 						print ("Cannot be a negative offer")
 						continue
 
@@ -187,9 +204,12 @@ class HumanInterface(object):
 
 					if accepted:
 						if gameState.playerMoney[self.playerNum] >= offer:
-							gameState.ProcessTrade(p2, self.playerNum, ch, offer)
+							gameState.ProcessTrade(ownerId, self.playerNum, ch, offer)
 						else:
 							print ("Player cannot afford sale")							
+
+					else:
+						print ("Player rejected proposed trade")
 
 			if ch == -1: break
 
