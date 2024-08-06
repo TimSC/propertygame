@@ -291,22 +291,49 @@ class RandomInterface(object):
 		return random.randint(0, 1)
 
 	def TryRaiseMoney(self, moneyNeeded, gameState):
-		
+
+		# Find suitable properties
 		unmortgaged = []
 		for spaceId, space in enumerate(gameState.board):
 			if self.playerNum == gameState.spaceOwners[spaceId] \
 				and not gameState.spaceMortgaged[spaceId]:
 
 				if spaceId in gameState.propertyInGroup \
-					and gameState.NumHousesInGroup(gameState.propertyInGroup[spaceId]) != 0: continue
+					and gameState.NumHousesInGroup(gameState.propertyInGroup[spaceId])[0] != 0: continue
 
 				unmortgaged.append(spaceId)
 
-		while len(unmortgaged) > 0:
-			
-			ind = random.randint(0, len(unmortgaged)-1)
-			spaceId = unmortgaged.pop(ind)
-			gameState.MortgageSpace(spaceId)
+		# Find suitable buildings
+		buildingsInGroup = {}
+		for groupId in gameState.GetCompleteHouseGroups(self.playerNum):
+
+			existingHouses, groupHouses = gameState.NumHousesInGroup(groupId)
+			buildingsInGroup[groupId] = existingHouses
+		totalBuildings = sum(buildingsInGroup.values())
+
+		# Sell buildings and mortgage properties until we get enough money
+		while len(unmortgaged) > 0 or totalBuildings > 0:
+
+			if totalBuildings > 0:
+
+				groupId = random.choice(list(buildingsInGroup.keys()))
+				if buildingsInGroup[groupId] > 0:
+					# Sell some buildings
+					gameState.SetNumBuildingsInGroup(groupId, random.randint(0, buildingsInGroup[groupId]-1))
+					
+					newNumBuildings = gameState.NumHousesInGroup(groupId)[0]
+					buildingsInGroup[groupId] = newNumBuildings
+					if newNumBuildings == 0:
+						for spaceId in gameState.propertyGroup[groupId]:
+							if spaceId not in unmortgaged:
+								unmortgaged.append(spaceId)
+					totalBuildings = sum(buildingsInGroup.values())
+
+			if len(unmortgaged) > 0:
+				# Mortgage some properties
+				ind = random.randint(0, len(unmortgaged)-1)
+				spaceId = unmortgaged.pop(ind)
+				gameState.MortgageSpace(spaceId)
 
 			if gameState.playerMoney[self.playerNum] >= moneyNeeded:
 				break # Stop now we have enough cash
