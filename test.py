@@ -1152,6 +1152,33 @@ def CheckNormalGameplay():
 		raise RuntimeError()
 	propertyGame.EndPlayerTurn()
 
+	# Player 1
+	# Lands on 29 (1 house rent)
+	pm = propertyGame.playerMoney[1]
+	pm2 = propertyGame.playerMoney[2]
+	playerInterfaces[1].Reset()
+	propertyGame.DoTurn([(6,4)])
+	if propertyGame.playerPositions[1] != 29:
+		raise RuntimeError()
+	if propertyGame.playerMoney[1] != pm - 120:
+		raise RuntimeError()
+	if propertyGame.playerMoney[2] != pm2 + 120:
+		raise RuntimeError()
+	propertyGame.EndPlayerTurn()
+
+	# Player 2
+	# Lands on go to jail (timestamp 37:00)
+	playerInterfaces[2].Reset()
+	propertyGame.DoTurn([(3,4)])
+	if propertyGame.playerPositions[2] != None:
+		raise RuntimeError()
+	propertyGame.EndPlayerTurn()
+
+	# Skip some routine play
+	self.spaceOwners[6] = 1
+	self.spaceOwners[34] = 1
+	# Give get chance out of jail to player 0
+
 def CheckAdvanceToGo():
 
 	# Check advance to go awards correct money
