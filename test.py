@@ -1073,7 +1073,84 @@ def CheckNormalGameplay():
 		raise RuntimeError()
 	propertyGame.EndPlayerTurn()
 
-	
+	# Turn 19
+	# Player 0
+	# Lands on 15 (rent 200)
+	playerInterfaces[0].Reset()
+	propertyGame.DoTurn([(3,2)])
+	if propertyGame.playerPositions[0] != 15:
+		raise RuntimeError()
+	if propertyGame.playerMoney[0] != 219:
+		raise RuntimeError()
+	if propertyGame.playerMoney[1] != 1083:
+		raise RuntimeError()
+	propertyGame.EndPlayerTurn()
+
+	# Player 1
+	# Rolls to get out of jail and fails (released on 3rd turn)
+	playerInterfaces[1].Reset()
+	propertyGame.DoTurn([(1,4)])
+	if propertyGame.playerPositions[1] != 15:
+		raise RuntimeError()
+	propertyGame.EndPlayerTurn()
+
+	# Player 2
+	# Lands on 12 (rent)
+	playerInterfaces[2].Reset()
+	propertyGame.DoTurn([(1,2)])
+	if propertyGame.playerPositions[2] != 12:
+		raise RuntimeError()
+	propertyGame.EndPlayerTurn()
+
+	# Turn 20
+	# Player 0
+	# Lands on 19 (owned), then 24
+	playerInterfaces[0].Reset()
+	propertyGame.DoTurn([(2,2), (1,4)])
+	if propertyGame.playerPositions[0] != 24:
+		raise RuntimeError()
+	propertyGame.EndPlayerTurn()
+
+	# Player 1
+	# Rolls to get out of jail, fails and pays $50 (humans finally figured out that rule!)
+	propertyGame.GoDirectlyToJail(1)
+	propertyGame.playerTimeInJail[1] = 2 # Last chance to roll double
+	playerInterfaces[1].Reset()
+	propertyGame.DoTurn([(5,4)])
+	if propertyGame.playerPositions[1] != 19:
+		raise RuntimeError()
+	if propertyGame.playerMoney[1] != 967:
+		raise RuntimeError()
+	propertyGame.EndPlayerTurn()
+
+	# Player 2 builds first house (cost 150)
+	pm = propertyGame.playerMoney[2]
+	propertyGame.SetNumBuildingsInGroup(propertyGame.propertyInGroup[29], 1)
+	if propertyGame.playerMoney[2] != pm - 150:
+		raise RuntimeError()
+
+	# Player 2
+	# Lands on 23 (rent)
+	playerInterfaces[2].Reset()
+	propertyGame.DoTurn([(5,6)])
+	if propertyGame.playerPositions[2] != 23:
+		raise RuntimeError()
+	propertyGame.EndPlayerTurn()
+
+	# Turn 21
+	# Player 0
+	# Lands on 27 (rent double rate 44)
+	pm = propertyGame.playerMoney[0]
+	pm2 = propertyGame.playerMoney[2]
+	playerInterfaces[0].Reset()
+	propertyGame.DoTurn([(1,2)])
+	if propertyGame.playerPositions[0] != 27:
+		raise RuntimeError()
+	if propertyGame.playerMoney[0] != pm - 44:
+		raise RuntimeError()
+	if propertyGame.playerMoney[2] != pm2 + 44:
+		raise RuntimeError()
+	propertyGame.EndPlayerTurn()
 
 def CheckAdvanceToGo():
 

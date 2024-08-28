@@ -396,7 +396,6 @@ class PropertyGame(object):
 			# Sets with mortgaged properies don't count in certain editions but we will allow them
 			houses = self.NumHousesOnSpace(spaceId)
 			fullGroupOwned = None
-			groupHouses = 0
 
 			if houses == 0:
 				# Check if the full set is owned
@@ -406,10 +405,9 @@ class PropertyGame(object):
 				for prId in propGroup:
 					if self.spaceOwners[prId] == ownerId:
 						countOwned += 1
-						groupHouses += self.NumHousesOnSpace(prId)
 				fullGroupOwned = countOwned == len(propGroup)
 
-				if groupHouses == 0 and fullGroupOwned:
+				if fullGroupOwned:
 					return space['rent'][0] * 2 # Rent is double in a full set
 
 			return space['rent'][houses]
