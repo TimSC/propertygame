@@ -264,8 +264,12 @@ def CheckNormalGameplay():
 	SetCardPosition(propertyGame.chanceCards, "TripReadingTrainStation", 1)
 	SetCardPosition(propertyGame.chanceCards, "BuildingLoadMature", 2)
 	SetCardPosition(propertyGame.chanceCards, "AdvanceIllinois", 3)
+	SetCardPosition(propertyGame.chanceCards, "TripBoardwalk", 4)
+	SetCardPosition(propertyGame.chanceCards, "GoToJailCard", 5)
+	SetCardPosition(propertyGame.chanceCards, "AdvanceToGo", 6)
 
 	SetCardPosition(propertyGame.communityCards, "BeautyContest", 0)
+	SetCardPosition(propertyGame.communityCards, "StreetRepairs", 1)
 
 	# Based on https://www.youtube.com/watch?v=ds-8i3o1qUM
 	# Turn 0
@@ -671,6 +675,7 @@ def CheckNormalGameplay():
 		raise RuntimeError()
 	propertyGame.EndPlayerTurn()
 
+	# Turn 10
 	# Player 0
 	# Lands on 35 (rent is 50)
 	playerInterfaces[0].Reset()
@@ -707,6 +712,368 @@ def CheckNormalGameplay():
 	if propertyGame.playerMoney[0] != 675:
 		raise RuntimeError()
 	propertyGame.EndPlayerTurn()
+
+	# Player 2
+	# Passes go, lands on chance 7 (TripBoardwalk) buys and gets a second group
+	playerInterfaces[2].Reset()
+	playerInterfaces[2].optionToBuy = 1
+	propertyGame.DoTurn([(4,6)])
+	if propertyGame.playerPositions[2] != 39:
+		raise RuntimeError()
+	if propertyGame.playerMoney[2] != 204:
+		raise RuntimeError()
+	if propertyGame.GetGroupOwner(propertyGame.propertyInGroup[39]) != 2:
+		raise RuntimeError()
+	propertyGame.EndPlayerTurn()
+
+	# Turn 11
+	# Player 0
+	# Lands on 5 (rent is 50), rerolls and lands on 12 (owned)
+	playerInterfaces[0].Reset()
+	propertyGame.DoTurn([(5,5), (1,6)])
+	if propertyGame.playerPositions[0] != 12:
+		raise RuntimeError()
+	if propertyGame.playerMoney[0] != 825:
+		raise RuntimeError()
+	if propertyGame.playerMoney[1] != 1251:
+		raise RuntimeError()
+	propertyGame.EndPlayerTurn()
+
+	# Player 1
+	# Lands on 29 (pays rent of 48)
+	playerInterfaces[0].Reset()
+	propertyGame.DoTurn([(1,4)])
+	if propertyGame.playerPositions[1] != 29:
+		raise RuntimeError()
+	if propertyGame.playerMoney[1] != 1251-48:
+		raise RuntimeError()
+	if propertyGame.playerMoney[2] != 204+48:
+		raise RuntimeError()
+	propertyGame.EndPlayerTurn()
+
+	# Player 2
+	# Lands on 15 (triggers auction, player 1 buys)
+	propertyGame.playerPositions[2] = 7 # Human error, starts count from space 7
+	playerInterfaces[2].Reset()
+	playerInterfaces[2].optionToBuy = 0
+	playerInterfaces[0].getAuctionBid = 159
+	playerInterfaces[1].getAuctionBid = 160
+	playerInterfaces[2].getAuctionBid = 0
+	propertyGame.DoTurn([(5,3)])
+	if propertyGame.playerPositions[2] != 15:
+		raise RuntimeError()
+	if propertyGame.playerMoney[1] != 1043:
+		raise RuntimeError()
+	propertyGame.EndPlayerTurn()
+
+	# Turn 12
+	# Player 0
+	# Lands on 21 (rent 18)
+	playerInterfaces[0].Reset()
+	propertyGame.DoTurn([(3,6)])
+	if propertyGame.playerPositions[0] != 21:
+		raise RuntimeError()
+	if propertyGame.playerMoney[0] != 807:
+		raise RuntimeError()
+	if propertyGame.playerMoney[1] != 1061:
+		raise RuntimeError()
+	propertyGame.EndPlayerTurn()
+
+	# Player 1
+	# Lands on 37 (pays rent of 70)
+	playerInterfaces[0].Reset()
+	propertyGame.DoTurn([(3,5)])
+	if propertyGame.playerPositions[1] != 37:
+		raise RuntimeError()
+	if propertyGame.playerMoney[1] != 991:
+		raise RuntimeError()
+	if propertyGame.playerMoney[2] != 322:
+		raise RuntimeError()
+	propertyGame.EndPlayerTurn()
+
+	# Player 2
+	# Lands on 25 (triggers auction, player 1 wins and gets the full set of stations)
+	# lands on 27 (owned), rolls a third double and goes to jail
+	playerInterfaces[2].Reset()
+	playerInterfaces[2].optionToBuy = 0
+	playerInterfaces[0].getAuctionBid = 199
+	playerInterfaces[1].getAuctionBid = 200
+	playerInterfaces[2].getAuctionBid = 0
+	propertyGame.DoTurn([(5,5), (1,1), (2,2)])
+	if propertyGame.playerPositions[2] != None:
+		raise RuntimeError()
+	if propertyGame.playerTimeInJail[2] != 0:
+		raise RuntimeError()
+	propertyGame.EndPlayerTurn()
+
+	# Turn 13
+	# Player 0
+	# Lands on 26 (rent 44)
+	playerInterfaces[0].Reset()
+	propertyGame.DoTurn([(1,4)])
+	propertyGame.EndPlayerTurn()
+	
+	# Player 1
+	# Passes go, Lands on 1
+	playerInterfaces[1].Reset()
+	playerInterfaces[1].optionToBuy = 1
+	propertyGame.DoTurn([(1,3)])
+	if propertyGame.playerPositions[1] != 1:
+		raise RuntimeError()
+	propertyGame.EndPlayerTurn()
+
+	# Player 2
+	# Rolls to get out of jail and fails
+	playerInterfaces[2].Reset()
+	propertyGame.DoTurn([(1,3)])
+	if propertyGame.playerPositions[2] != None:
+		raise RuntimeError()
+	if propertyGame.playerTimeInJail[2] != 1:
+		raise RuntimeError()
+	propertyGame.EndPlayerTurn()
+
+	# Turn 13
+	# Player 0
+	# Lands on 32 (buys), lands un luxury tax
+	playerInterfaces[0].Reset()
+	playerInterfaces[0].optionToBuy = 1
+	propertyGame.DoTurn([(3,3), (1,5)])
+	propertyGame.EndPlayerTurn()
+
+	# Player 1
+	# Lands on just visiting
+	playerInterfaces[1].Reset()
+	propertyGame.DoTurn([(6,3)])
+	if propertyGame.playerPositions[1] != 10:
+		raise RuntimeError()
+	propertyGame.EndPlayerTurn()
+
+	# Player 2
+	# Rolls to get out of jail and fails
+	playerInterfaces[2].Reset()
+	propertyGame.DoTurn([(1,3)])
+	if propertyGame.playerPositions[2] != None:
+		raise RuntimeError()
+	if propertyGame.playerTimeInJail[2] != 2:
+		raise RuntimeError()
+	propertyGame.EndPlayerTurn()
+
+	# Turn 14
+	# Player 0
+	# Lands on 9 (buys)
+	playerInterfaces[0].Reset()
+	playerInterfaces[0].optionToBuy = 1
+	propertyGame.DoTurn([(6,5)])
+	if propertyGame.playerPositions[0] != 9:
+		raise RuntimeError()
+	propertyGame.EndPlayerTurn()
+
+	# Player 1
+	# Lands on 15 (owned)
+	playerInterfaces[1].Reset()
+	propertyGame.DoTurn([(1,4)])
+	if propertyGame.playerPositions[1] != 15:
+		raise RuntimeError()
+	propertyGame.EndPlayerTurn()
+
+	# Player 2
+	# Rolls to get out of jail and fails (human error here as they player moves out of jail on 3rd attempt)
+	playerInterfaces[2].Reset()
+	propertyGame.DoTurn([(1,3)])
+	if propertyGame.playerPositions[2] != 14:
+		raise RuntimeError()
+	if propertyGame.playerTimeInJail[2] != None:
+		raise RuntimeError()
+	propertyGame.EndPlayerTurn()
+
+	# Turn 14
+	# Player 0
+	# Lands on 14 (rent 12)
+	playerInterfaces[0].Reset()
+	propertyGame.DoTurn([(1,4)])
+	if propertyGame.playerPositions[0] != 14:
+		raise RuntimeError()
+	propertyGame.EndPlayerTurn()
+
+	# Player 1
+	# Lands on 20
+	playerInterfaces[1].Reset()
+	propertyGame.DoTurn([(1,4)])
+	propertyGame.EndPlayerTurn()
+
+	# Player 2
+	# Rolls to get out of jail and fails (human error here: they are not in jail)
+	propertyGame.GoDirectlyToJail(2)
+	playerInterfaces[2].Reset()
+	propertyGame.DoTurn([(1,3)])
+	if propertyGame.playerPositions[2] != None:
+		raise RuntimeError()
+	if propertyGame.playerTimeInJail[2] != 1:
+		raise RuntimeError()
+	propertyGame.EndPlayerTurn()
+
+	# Turn 15
+	# Player 0
+	# Lands on 22 (GoToJailCard chance)
+	playerInterfaces[0].Reset()
+	propertyGame.DoTurn([(5,3)])
+	if propertyGame.playerPositions[0] != None:
+		raise RuntimeError()
+	if propertyGame.playerTimeInJail[0] != 0:
+		raise RuntimeError()
+	propertyGame.EndPlayerTurn()
+
+	# Player 1
+	# Lands on 30 Gotojail
+	playerInterfaces[1].Reset()
+	propertyGame.DoTurn([(5,5)])
+	if propertyGame.playerPositions[1] != None:
+		raise RuntimeError()
+	if propertyGame.playerTimeInJail[1] != 0:
+		raise RuntimeError()
+	propertyGame.EndPlayerTurn()
+
+	# Omit section that they keep trying for double roll
+	# Player 2
+	# Rolls to get out of jail and fails
+	playerInterfaces[2].Reset()
+	propertyGame.DoTurn([(1,3)])
+	if propertyGame.playerPositions[2] != None:
+		raise RuntimeError()
+
+	propertyGame.EndPlayerTurn()
+
+	# Turn 16
+	# Player 0
+	# Rolls a double and lands on 18 (rent)
+	playerInterfaces[0].Reset()
+	propertyGame.DoTurn([(4,4)])
+	if propertyGame.playerPositions[0] != 18:
+		raise RuntimeError()
+	propertyGame.EndPlayerTurn()
+
+	# Player 1
+	# Rolls to get out of jail and fails
+	playerInterfaces[1].Reset()
+	propertyGame.DoTurn([(1,3)])
+	if propertyGame.playerPositions[1] != None:
+		raise RuntimeError()
+	propertyGame.EndPlayerTurn()
+
+	# Player 2
+	# Rolls a double and lands on 14 (owned)
+	playerInterfaces[2].Reset()
+	propertyGame.DoTurn([(2,2)])
+	if propertyGame.playerPositions[2] != 14:
+		raise RuntimeError()
+	propertyGame.EndPlayerTurn()
+
+	# Turn 16
+	# Player 0
+	# Lands on 23 (buys?)
+	playerInterfaces[0].Reset()
+	playerInterfaces[0].optionToBuy = 1
+	propertyGame.DoTurn([(1,4)])
+	if propertyGame.playerPositions[0] != 23:
+		raise RuntimeError()
+	propertyGame.EndPlayerTurn()
+
+	# Player 1 (turn happens off screen)
+	# Rolls to get out of jail and fails
+	playerInterfaces[1].Reset()
+	propertyGame.DoTurn([(1,4)])
+	if propertyGame.playerPositions[1] != None:
+		raise RuntimeError()
+	propertyGame.EndPlayerTurn()
+
+	# Player 2 (turn happens off screen)
+	# Lands on 19 (rent?)
+	playerInterfaces[2].Reset()
+	propertyGame.DoTurn([(1,4)])
+	if propertyGame.playerPositions[2] != 19:
+		raise RuntimeError()
+	propertyGame.EndPlayerTurn()
+
+	# Turn 17
+	# Player 0
+	# Lands on 33 (community StreetRepairs), card has no effect
+	propertyGame.playerTurn = 0
+	playerInterfaces[0].Reset()
+	propertyGame.DoTurn([(6,4)])
+	if propertyGame.playerPositions[0] != 33:
+		raise RuntimeError()
+	if propertyGame.playerMoney[0] != 213:
+		raise RuntimeError()
+	propertyGame.EndPlayerTurn()
+
+	# Player 1
+	# Rolls to get out of jail and fails (should move out on 3rd attempt)
+	playerInterfaces[1].Reset()
+	propertyGame.DoTurn([(1,4)])
+	if propertyGame.playerPositions[1] != 15:
+		raise RuntimeError()
+	propertyGame.EndPlayerTurn()
+
+	# Player 2
+	# Lands on 29 (owned) (human error: they count 11 but only move 10 spaces)
+	playerInterfaces[2].Reset()
+	propertyGame.DoTurn([(6,4)])
+	if propertyGame.playerPositions[2] != 29:
+		raise RuntimeError()
+	propertyGame.EndPlayerTurn()
+
+	# Turn 18
+	# Player 0
+	# Passes go, Lands on 1 (rent)
+	playerInterfaces[0].Reset()
+	propertyGame.DoTurn([(5,3)])
+	if propertyGame.playerPositions[0] != 1:
+		raise RuntimeError()
+	propertyGame.EndPlayerTurn()
+
+	# Player 1
+	# Rolls to get out of jail (error: not actually in jail)
+	propertyGame.GoDirectlyToJail(1)
+	playerInterfaces[1].Reset()
+	propertyGame.DoTurn([(1,4)])
+	if propertyGame.playerPositions[1] != None:
+		raise RuntimeError()
+	propertyGame.EndPlayerTurn()
+
+	# Player 2
+	# Lands on 36 (chance AdvanceToGo)
+	playerInterfaces[2].Reset()
+	propertyGame.DoTurn([(3,4)])
+	if propertyGame.playerPositions[2] != 0:
+		raise RuntimeError()
+	propertyGame.EndPlayerTurn()
+
+	# Turn 19
+	# Player 0
+	# Lands on just visiting
+	playerInterfaces[0].Reset()
+	propertyGame.DoTurn([(6,3)])
+	if propertyGame.playerPositions[0] != 10:
+		raise RuntimeError()
+	propertyGame.EndPlayerTurn()
+
+	# Player 1
+	# Rolls to get out of jail and fails
+	playerInterfaces[1].Reset()
+	propertyGame.DoTurn([(1,4)])
+	if propertyGame.playerPositions[1] != None:
+		raise RuntimeError()
+	propertyGame.EndPlayerTurn()
+
+	# Player 2 (timestamp 32:35)
+	# Lands on 9 (rent)
+	playerInterfaces[2].Reset()
+	propertyGame.DoTurn([(4,5)])
+	if propertyGame.playerPositions[2] != 9:
+		raise RuntimeError()
+	propertyGame.EndPlayerTurn()
+
+	
 
 def CheckAdvanceToGo():
 
