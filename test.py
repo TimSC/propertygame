@@ -263,6 +263,7 @@ def CheckNormalGameplay():
 	SetCardPosition(propertyGame.chanceCards, "AdvanceUtility", 0)
 	SetCardPosition(propertyGame.chanceCards, "TripReadingTrainStation", 1)
 	SetCardPosition(propertyGame.chanceCards, "BuildingLoadMature", 2)
+	SetCardPosition(propertyGame.chanceCards, "AdvanceIllinois", 3)
 
 	SetCardPosition(propertyGame.communityCards, "BeautyContest", 0)
 
@@ -315,7 +316,7 @@ def CheckNormalGameplay():
 	propertyGame.DoTurn([(3,4)])
 	if propertyGame.playerPositions[1] != 12:
 		raise RuntimeError()
-	if propertyGame.playerMoney[1] != 1272: # Human mistake in video here!
+	if propertyGame.playerMoney[1] != 1272: # Human mistake in video here! They realize later.
 		raise RuntimeError()
 	if propertyGame.playerMoney[0] != 1378:
 		raise RuntimeError()
@@ -646,6 +647,66 @@ def CheckNormalGameplay():
 		raise RuntimeError()
 	propertyGame.EndPlayerTurn()
 
+	# Player 1
+	# Pays to get out of jail, lands on 21 (already owned)
+	playerInterfaces[1].Reset()
+	playerInterfaces[1].payGetOutOfJail = True
+	propertyGame.DoTurn([(5,6)])
+	if propertyGame.playerPositions[1] != 21:
+		raise RuntimeError()
+	if propertyGame.playerTimeInJail[1] != None:
+		raise RuntimeError()
+	if propertyGame.playerMoney[1] != 1041:
+		raise RuntimeError()
+	propertyGame.EndPlayerTurn()
+	
+	# Player 2
+	# Lands on 37 (buys for 350)
+	playerInterfaces[2].Reset()
+	playerInterfaces[2].optionToBuy = 1
+	propertyGame.DoTurn([(4,2)])
+	if propertyGame.playerPositions[2] != 37:
+		raise RuntimeError()
+	if propertyGame.playerMoney[2] != 404:
+		raise RuntimeError()
+	propertyGame.EndPlayerTurn()
+
+	# Player 0
+	# Lands on 35 (rent is 50)
+	playerInterfaces[0].Reset()
+	propertyGame.DoTurn([(1,5)])
+	if propertyGame.playerPositions[0] != 35:
+		raise RuntimeError()
+	if propertyGame.playerMoney[0] != 585:
+		raise RuntimeError()
+	if propertyGame.playerMoney[1] != 1091:
+		raise RuntimeError()
+	propertyGame.EndPlayerTurn()
+
+	# Player 1
+	# Lands on 28 (rent is 70)
+	playerInterfaces[1].Reset()
+	propertyGame.DoTurn([(4,3)])
+	if propertyGame.playerPositions[1] != 28:
+		raise RuntimeError()
+	if propertyGame.playerMoney[0] != 655:
+		raise RuntimeError()
+	if propertyGame.playerMoney[1] != 1021:
+		raise RuntimeError()
+	propertyGame.EndPlayerTurn()
+
+	# Player 1 takes another turn (human error)
+	# Lands on 36, advances to 24 plays (rent of 20)
+	propertyGame.playerTurn = 1
+	playerInterfaces[1].Reset()
+	propertyGame.DoTurn([(5,3)])
+	if propertyGame.playerPositions[1] != 24:
+		raise RuntimeError()
+	if propertyGame.playerMoney[1] != 1201:
+		raise RuntimeError()
+	if propertyGame.playerMoney[0] != 675:
+		raise RuntimeError()
+	propertyGame.EndPlayerTurn()
 
 def CheckAdvanceToGo():
 

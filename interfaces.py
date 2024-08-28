@@ -458,6 +458,7 @@ class TestInterface(object):
 	def Reset(self):
 		self.optionToBuy = None
 		self.getAuctionBid = None
+		self.payGetOutOfJail = False
 
 	def OptionToBuy(self, spaceId, gameState):
 		if self.optionToBuy is None:
@@ -473,7 +474,7 @@ class TestInterface(object):
 		pass
 
 	def PayJailFine(self, gameState):
-		pass
+		return self.payGetOutOfJail
 
 	def TryRaiseMoney(self, moneyNeeded, gameState):
 		pass
