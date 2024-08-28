@@ -262,6 +262,9 @@ def CheckNormalGameplay():
 
 	SetCardPosition(propertyGame.chanceCards, "AdvanceUtility", 0)
 	SetCardPosition(propertyGame.chanceCards, "TripReadingTrainStation", 1)
+	SetCardPosition(propertyGame.chanceCards, "BuildingLoadMature", 2)
+
+	SetCardPosition(propertyGame.communityCards, "BeautyContest", 0)
 
 	# Based on https://www.youtube.com/watch?v=ds-8i3o1qUM
 	# Turn 0
@@ -444,11 +447,202 @@ def CheckNormalGameplay():
 	propertyGame.EndPlayerTurn()
 
 	# Player 1
+	# Lands on go, rerolls and lands on own station.
 	playerInterfaces[1].Reset()
 	propertyGame.DoTurn([(1,1), (2,3)])
 	if propertyGame.playerPositions[1] != 5:
 		raise RuntimeError()
 	if propertyGame.playerMoney[1] != 1203:
+		raise RuntimeError()
+	propertyGame.EndPlayerTurn()
+
+	# Player 2
+	# Rolls and lands on 21 and pays rent, rerolls and lands on 29 (already owns)
+	playerInterfaces[2].Reset()
+	propertyGame.DoTurn([(5,5), (5,3)])
+	if propertyGame.playerPositions[2] != 29:
+		raise RuntimeError()
+	if propertyGame.playerMoney[2] != 656:
+		raise RuntimeError()
+	if propertyGame.playerMoney[1] != 1221:
+		raise RuntimeError()
+	propertyGame.EndPlayerTurn()
+	
+	# Turn 5
+	# Player 0
+	# Rolls and lands on 28 (buys)
+	playerInterfaces[0].Reset()
+	playerInterfaces[0].optionToBuy = 1
+	propertyGame.DoTurn([(2,6)])
+	if propertyGame.playerPositions[0] != 28:
+		raise RuntimeError()
+	if propertyGame.playerMoney[0] != 1063:
+		raise RuntimeError()
+	propertyGame.EndPlayerTurn()
+
+	# Player 1
+	# Lands on 16 (buys)
+	playerInterfaces[1].Reset()
+	playerInterfaces[1].optionToBuy = 1
+	propertyGame.DoTurn([(5,6)])
+	if propertyGame.playerPositions[1] != 16:
+		raise RuntimeError()
+	if propertyGame.playerMoney[1] != 1041:
+		raise RuntimeError()
+	propertyGame.EndPlayerTurn()
+
+	# Player 2
+	# Rolls and lands 38 luxury tax
+	playerInterfaces[2].Reset()
+	propertyGame.DoTurn([(6,3)])
+	if propertyGame.playerPositions[2] != 38:
+		raise RuntimeError()
+	if propertyGame.playerMoney[2] != 556:
+		raise RuntimeError()
+	propertyGame.EndPlayerTurn()
+
+	# Turn 6
+	# Player 0
+	# Lands on 38 luxury tax, rerolls and lands on 5 (pays rent)
+	playerInterfaces[0].Reset()
+	playerInterfaces[0].optionToBuy = 1
+	propertyGame.DoTurn([(5,5), (4,3)])
+	if propertyGame.playerPositions[0] != 5:
+		raise RuntimeError()
+	if propertyGame.playerMoney[0] != 1063-100+200-50:
+		raise RuntimeError()
+	if propertyGame.playerMoney[1] != 1041+50:
+		raise RuntimeError()
+	propertyGame.EndPlayerTurn()
+
+	# Player 1
+	# Lands on 26 (triggers auction). Player 2 gets a full set (yellow).
+	playerInterfaces[1].Reset()
+	playerInterfaces[1].optionToBuy = 0
+	playerInterfaces[0].getAuctionBid = 199
+	playerInterfaces[1].getAuctionBid = 0
+	playerInterfaces[2].getAuctionBid = 200
+	propertyGame.DoTurn([(4,6)])
+	if propertyGame.playerPositions[1] != 26:
+		raise RuntimeError()
+	if propertyGame.playerMoney[2] != 356:
+		raise RuntimeError()
+	if propertyGame.GetGroupOwner(propertyGame.propertyInGroup[26]) != 2:
+		raise RuntimeError()
+	propertyGame.EndPlayerTurn()
+
+	# Player 2
+	# Lands on chance, building loan matures (human player forgets he passed go)
+	playerInterfaces[2].Reset()
+	propertyGame.DoTurn([(6,3)])
+	if propertyGame.playerPositions[2] != 7:
+		raise RuntimeError()
+	if propertyGame.playerMoney[2] != 706:
+		raise RuntimeError()
+	propertyGame.EndPlayerTurn()
+
+	# Turn 6
+	# Player 0
+	# Rolls and lands on 10
+	playerInterfaces[0].Reset()
+	propertyGame.DoTurn([(1,4)])
+	if propertyGame.playerPositions[0] != 10:
+		raise RuntimeError()
+	propertyGame.EndPlayerTurn()
+
+	# Player 1
+	# Lands on go to jail
+	playerInterfaces[1].Reset()
+	propertyGame.DoTurn([(1,3)])
+	if propertyGame.playerPositions[1] != None:
+		raise RuntimeError()
+	if propertyGame.playerTimeInJail[1] != 0:
+		raise RuntimeError()
+	propertyGame.EndPlayerTurn()
+
+	# Player 2
+	# Lands on 14 (already owned)
+	playerInterfaces[2].Reset()
+	propertyGame.DoTurn([(4,3)])
+	if propertyGame.playerPositions[2] != 14:
+		raise RuntimeError()
+	propertyGame.EndPlayerTurn()
+
+	# Turn 7
+	# Player 0
+	# Lands on community chest (BeautyContest)
+	playerInterfaces[0].Reset()
+	propertyGame.DoTurn([(3,4)])
+	if propertyGame.playerPositions[0] != 17:
+		raise RuntimeError()
+	if propertyGame.playerMoney[0] != 1123:
+		raise RuntimeError()
+	propertyGame.EndPlayerTurn()
+
+	# Player 1
+	# Rolls to get out of jail and fails
+	playerInterfaces[1].Reset()
+	propertyGame.DoTurn([(1,3)])
+	if propertyGame.playerPositions[1] != None:
+		raise RuntimeError()
+	if propertyGame.playerTimeInJail[1] != 1:
+		raise RuntimeError()
+	propertyGame.EndPlayerTurn()
+
+	# Player 2
+	# Lands on 18 (already owned)
+	playerInterfaces[2].Reset()
+	propertyGame.DoTurn([(1,3)])
+	if propertyGame.playerPositions[2] != 18:
+		raise RuntimeError()
+	propertyGame.EndPlayerTurn()
+
+	# Turn 8
+	# Player 0
+	# Lands on 24 (buys for 240)
+	playerInterfaces[0].Reset()
+	playerInterfaces[0].optionToBuy = 1
+	propertyGame.DoTurn([(3,4)])
+	if propertyGame.playerPositions[0] != 24:
+		raise RuntimeError()
+	if propertyGame.playerMoney[0] != 883:
+		raise RuntimeError()
+	propertyGame.EndPlayerTurn()
+
+	# Player 1
+	# Rolls to get out of jail and fails
+	playerInterfaces[1].Reset()
+	propertyGame.DoTurn([(1,3)])
+	if propertyGame.playerPositions[1] != None:
+		raise RuntimeError()
+	if propertyGame.playerTimeInJail[1] != 2:
+		raise RuntimeError()
+	propertyGame.EndPlayerTurn()
+
+	# Player 2
+	# Lands on 26 (already owned), rerolls and lands on 31 (triggers auction, player 0 buys)
+	playerInterfaces[2].Reset()
+	playerInterfaces[2].optionToBuy = 0
+	playerInterfaces[0].getAuctionBid = 200
+	playerInterfaces[1].getAuctionBid = 199
+	playerInterfaces[2].getAuctionBid = 0
+	propertyGame.DoTurn([(4,4), (1,4)])
+	if propertyGame.playerPositions[2] != 31:
+		raise RuntimeError()
+	if propertyGame.playerMoney[0] != 683:
+		raise RuntimeError()
+	propertyGame.EndPlayerTurn()
+
+	# Turn 9
+	# Player 0
+	# Lands on 29 (pays rent of 48)
+	playerInterfaces[0].Reset()
+	propertyGame.DoTurn([(1,4)])
+	if propertyGame.playerPositions[0] != 29:
+		raise RuntimeError()
+	if propertyGame.playerMoney[0] != 683-48:
+		raise RuntimeError()
+	if propertyGame.playerMoney[2] != 706+48:
 		raise RuntimeError()
 	propertyGame.EndPlayerTurn()
 
