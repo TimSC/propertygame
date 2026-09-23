@@ -559,7 +559,7 @@
         },
         {
             "name": "AdvanceRailroad",
-            "move_to": "railroad"
+            "move_to": "station"
         },
         {
             "name": "BankPays",

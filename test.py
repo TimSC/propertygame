@@ -1175,8 +1175,8 @@ def CheckNormalGameplay():
 	propertyGame.EndPlayerTurn()
 
 	# Skip some routine play
-	self.spaceOwners[6] = 1
-	self.spaceOwners[34] = 1
+	propertyGame.spaceOwners[6] = 1
+	propertyGame.spaceOwners[34] = 1
 	# Give get chance out of jail to player 0
 
 def CheckAdvanceToGo():

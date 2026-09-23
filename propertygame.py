@@ -82,7 +82,7 @@ class PropertyGame(object):
 		if self.playerTimeInJail[self.playerTurn] is not None and len(self.playerGetOutOfJailCards[self.playerTurn]) > 0:
 			response = self.playerInterfaces[self.playerTurn].UseGetOutOfJailCard(self)
 			if response:
-				self.globalInterface.Log("Player used their get out of jail card".format(self.playerTurn, self.jailFine))
+				self.globalInterface.Log("Player {} used their get out of jail card".format(self.playerTurn))
 				goojc = self.playerGetOutOfJailCards[self.playerTurn].pop()
 				if goojc['deck'] == 'chance': # Add card to bottom of appropriate deck
 					self.chanceCards.append(goojc)
@@ -230,7 +230,7 @@ class PropertyGame(object):
 			# Not owned
 			accepted = False
 
-			if self.playerMoney[playerId] < destinationSpace['price'] and self.PlayerMaxMoneyThatCanBeRaised(playerId) <= destinationSpace['price']:
+			if self.playerMoney[playerId] < destinationSpace['price'] and self.PlayerMaxMoneyThatCanBeRaised(playerId) >= destinationSpace['price']:
 				# A player is allowed to mortgage and sell houses here to raise cash
 				self.globalInterface.Log("Player {} cannot automatically afford {} but could raise the cash".format(playerId, destinationSpace['name']))
 				self.PlayerTryRaiseMoney(playerId, destinationSpace['price'])
@@ -312,14 +312,16 @@ class PropertyGame(object):
 			if amount > 0:	
 				self.globalInterface.Log("Player {} gets {} money from each player".format(playerId, amount))
 				for plId in range(self.numPlayers):
-					if plId != playerId: continue
+					if plId == playerId or self.playerBankrupt[plId]: continue
 					self.EnsurePlayment(plId, amount, playerId)
 			else:
-				self.globalInterface.Log("Player {} must pay {} to each player".format(playerId, amount))
+				self.globalInterface.Log("Player {} must pay {} to each player".format(playerId, -amount))
 				for plId in range(self.numPlayers):
-					if plId != playerId: continue
-					bankrupted = self.EnsurePlayment(playerId, amount, plId)
-					if bankrupted: turnEnded = True
+					if plId == playerId or self.playerBankrupt[plId]: continue
+					bankrupted = self.EnsurePlayment(playerId, -amount, plId)
+					if bankrupted:
+						turnEnded = True
+						break # Nothing left to pay the remaining players
 
 		if 'pay_per_house' in drawCard:
 			count = 0
@@ -459,11 +461,17 @@ class PropertyGame(object):
 		highestBidder = bids[-1][0]
 
 		if highestBid >= 1:
+			# Never charge more than the winner bid (e.g. on a tied bid)
+			price = min(highestBid, secondHighestBid + 1)
+
 			# Bidding too high can cause bankruptcy
 			# https://boardgames.stackexchange.com/questions/39455/in-monopoly-what-happens-if-the-auction-winner-cannot-pay-his-her-bid
-			bankrupted = self.EnsurePlayment(highestBidder, secondHighestBid + 1, 'bank')
+			bankrupted = self.EnsurePlayment(highestBidder, price, 'bank')
+			if bankrupted:
+				self.globalInterface.Log("Player {} could not pay for {}, it remains unowned".format(highestBidder, space['name']))
+				return
 			self.spaceOwners[spaceId] = highestBidder
-			self.globalInterface.Log("Player {} bought {} for {}".format(highestBidder, space['name'], secondHighestBid + 1))
+			self.globalInterface.Log("Player {} bought {} for {}".format(highestBidder, space['name'], price))
 
 		else:
 			self.globalInterface.Log("Auction ended with no bids")
@@ -510,28 +518,14 @@ class PropertyGame(object):
 	def PlayerMaxMoneyThatCanBeRaised(self, playerId):
 
 		assert playerId is not None
-		# Plan to sell all houses (so there are more houses available to replace hotels)
+		# Plan to sell all buildings, once per group
 		totalBuildings = 0
-		for spaceId in self.boardHouses:
-			if spaceId is None: continue
-			ownerId = self.spaceOwners[spaceId]
-			if ownerId != playerId: continue
+		for groupId in self.propertyGroup:
+			if self.GetGroupOwner(groupId) != playerId: continue
+			if self.NumHousesInGroup(groupId)[0] == 0: continue
 
-			propGroupId = self.propertyInGroup[spaceId]
-			
-			impossible, numAllowed, reasons, planCost = self.SetNumBuildingsInGroup(propGroupId, 0, planOnly = True)
-			totalBuildings += planCost
-
-		# Plan to sell all hotels
-		for spaceId in self.boardHotels:
-			if spaceId is None: continue
-			ownerId = self.spaceOwners[spaceId]
-			if ownerId != playerId: continue
-
-			propGroupId = self.propertyInGroup[spaceId]
-			
-			impossible, numAllowed, reasons, planCost = self.SetNumBuildingsInGroup(propGroupId, 0, planOnly = True)
-			totalBuildings += planCost
+			impossible, numAllowed, reasons, planCost = self.SetNumBuildingsInGroup(groupId, 0, planOnly = True)
+			totalBuildings -= planCost # Negative cost is money received
 
 		# Plan to mortgage everything
 		totalMortgage = 0
@@ -554,13 +548,21 @@ class PropertyGame(object):
 		self.playerMoney[ownerId] += space['mortgage']
 		self.spaceMortgaged[spaceId] = True
 
+	def MortgageInterest(self, spaceId):
+		# 10% interest, rounded up to a whole dollar
+		return (self.board[spaceId]['mortgage'] + 9) // 10
+
+	def UnmortgageCost(self, spaceId):
+		return self.board[spaceId]['mortgage'] + self.MortgageInterest(spaceId)
+
 	def UnmortgageSpace(self, spaceId):
 
 		if spaceId in self.propertyInGroup:
 			assert self.NumHousesInGroup(self.propertyInGroup[spaceId])[0] == 0
-		space = self.board[spaceId]
 		ownerId = self.spaceOwners[spaceId]
-		self.playerMoney[ownerId] -= int(1.1 * space['mortgage'])
+		cost = self.UnmortgageCost(spaceId)
+		assert self.playerMoney[ownerId] >= cost
+		self.playerMoney[ownerId] -= cost
 		self.spaceMortgaged[spaceId] = False
 
 	def PlayerGoesBankrupt(self, playerOwingId, playerOwedId):
@@ -568,18 +570,7 @@ class PropertyGame(object):
 		self.globalInterface.Log("Player {} goes backrupt and pays everything to {}".format(playerOwingId, playerOwedId))
 		self.playerBankrupt[playerOwingId] = True
 
-		# Transfer all cash
-		if playerOwedId != 'bank':
-			self.playerMoney[playerOwedId] += self.playerMoney[playerOwingId]
-		self.playerMoney[playerOwingId] = 0
-
-		# Transfer get out of jail cards
-		# https://boardgames.stackexchange.com/questions/22829/do-get-out-of-jail-free-cards-have-value
-		if playerOwedId != 'bank':
-			self.playerGetOutOfJailCards[playerOwedId].extend(self.playerGetOutOfJailCards[playerOwingId])
-		self.playerGetOutOfJailCards[playerOwingId] = []
-
-		# Remove all houses and hotels for cash
+		# Remove all houses and hotels for cash (before cash is transferred)
 		for spaceId, space in enumerate(self.board):
 			owner = self.spaceOwners[spaceId]
 			if owner == playerOwingId and spaceId in self.propertyInGroup and self.NumHousesOnSpace(spaceId) > 0:
@@ -598,6 +589,17 @@ class PropertyGame(object):
 			owner = self.spaceOwners[hs]
 			if owner != playerOwingId: continue
 			assert self.boardHouses[i] is None
+
+		# Transfer all cash
+		if playerOwedId != 'bank':
+			self.playerMoney[playerOwedId] += self.playerMoney[playerOwingId]
+		self.playerMoney[playerOwingId] = 0
+
+		# Transfer get out of jail cards
+		# https://boardgames.stackexchange.com/questions/22829/do-get-out-of-jail-free-cards-have-value
+		if playerOwedId != 'bank':
+			self.playerGetOutOfJailCards[playerOwedId].extend(self.playerGetOutOfJailCards[playerOwingId])
+		self.playerGetOutOfJailCards[playerOwingId] = []
 
 		# Transfer all property to owed player
 		mortgaged = []
@@ -625,9 +627,8 @@ class PropertyGame(object):
 			# The receiving player gets to choose if they unmortgage properties
 			choices = []
 			for spaceId in mortgaged:
-				space = self.board[spaceId]
-				interest = int(round(space['mortgage'] * 0.1))
-				mortgagePlusInterest = space['mortgage'] + interest
+				interest = self.MortgageInterest(spaceId)
+				mortgagePlusInterest = self.UnmortgageCost(spaceId)
 				choices.append([spaceId, True, interest, mortgagePlusInterest])
 
 			choices = self.playerInterfaces[playerOwedId].UnmortgageChoices(choices, self)
@@ -919,6 +920,9 @@ class PropertyGame(object):
 					planRemoveCount += 1
 					planRemoveCost -= space['building_costs'] // 2
 
+				if planOnly:
+					return impossible, planRemoveCount, reasons, planRemoveCost
+
 				# Execute the removal plan
 				houseCount = {}
 				sell = 0
@@ -957,6 +961,12 @@ class PropertyGame(object):
 				# be sold one house at a time (one hotel equals five houses)..."
 
 				# This cannot fail as house models are not required, so no planning needed
+				if planOnly:
+					planRemoveCost = 0
+					for spaceId, buildCount in groupHouses:
+						planRemoveCost -= buildCount * self.board[spaceId]['building_costs'] // 2
+					return impossible, existingHouses, reasons, planRemoveCost
+
 				sell = 0
 				for spaceId in self.boardGroupBuildOrder[groupId]:
 					space = self.board[spaceId]
