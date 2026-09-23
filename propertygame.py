@@ -443,26 +443,18 @@ class PropertyGame(object):
 		space = self.board[spaceId]
 
 		self.globalInterface.Log("Auction started for {}".format(space['name']))
-		bids = []
-		for playerId, pl in enumerate(self.playerInterfaces):
-			# only non backcrupt players can bid
-			backrupted = self.playerBankrupt[playerId]
-			if backrupted: continue
 
-			bid = int(pl.GetActionBid(spaceId, self))
-			bids.append((playerId, bid))
+		# Any non bankrupt player may bid, including one who declined to buy.
+		# "The bidding may start at any price."
+		def AskBid(playerId, highestBid, highestBidder):
+			bid = self.playerInterfaces[playerId].GetAuctionBid(spaceId, highestBid, highestBidder, self)
+			if bid is None: return None
+			return int(bid), None
 
-		assert len(bids) >= 2
-		bids.sort(key = lambda x: x[1])		
+		highestBidder, highestBid, extra = self.OpenAuction(self.GetBiddersInTurnOrder(), AskBid)
 
-		# Give the property to the highest bidder, for 1 more than the second highest bid
-		secondHighestBid = bids[-2][1]
-		highestBid = bids[-1][1]
-		highestBidder = bids[-1][0]
-
-		if highestBid >= 1:
-			# Never charge more than the winner bid (e.g. on a tied bid)
-			price = min(highestBid, secondHighestBid + 1)
+		if highestBidder is not None:
+			price = highestBid
 
 			# Bidding too high can cause bankruptcy
 			# https://boardgames.stackexchange.com/questions/39455/in-monopoly-what-happens-if-the-auction-winner-cannot-pay-his-her-bid
@@ -476,6 +468,46 @@ class PropertyGame(object):
 		else:
 			self.globalInterface.Log("Auction ended with no bids")
 
+	def GetBiddersInTurnOrder(self, firstPlayerId=None):
+		# Non bankrupt players, starting with firstPlayerId (default: the current player)
+		if firstPlayerId is None: firstPlayerId = self.playerTurn
+		out = []
+		for i in range(self.numPlayers):
+			playerId = (firstPlayerId + i) % self.numPlayers
+			if not self.playerBankrupt[playerId]:
+				out.append(playerId)
+		return out
+
+	def OpenAuction(self, bidderIds, askBid):
+		# Open ascending auction. Bidders are asked in turn and may bid as many times
+		# as they like, each bid beating the current highest. It ends once everyone
+		# else has passed in a row since the last bid; passing does not stop a player
+		# bidding again later in the same auction.
+		# askBid(playerId, highestBid, highestBidder) returns (bid, extra) or None to pass.
+		# Returns (highestBidder, highestBid, extra); highestBidder is None if nobody bid.
+		assert len(bidderIds) >= 2
+		highestBid, highestBidder, highestExtra = 0, None, None
+		passesInARow = 0
+		i = 0
+		while True:
+			needed = len(bidderIds) if highestBidder is None else len(bidderIds) - 1
+			if passesInARow >= needed: break
+
+			playerId = bidderIds[i % len(bidderIds)]
+			i += 1
+			if playerId == highestBidder: continue
+
+			response = askBid(playerId, highestBid, highestBidder)
+			if response is not None and response[0] > highestBid:
+				highestBid, highestExtra = response
+				highestBidder = playerId
+				passesInARow = 0
+				self.globalInterface.Log("Player {} bids {}".format(playerId, highestBid))
+			else:
+				passesInARow += 1
+
+		return highestBidder, highestBid, highestExtra
+
 	def EndPlayerTurn(self):
 		self.playerTurn += 1
 		if self.playerTurn >= self.numPlayers:
@@ -485,13 +517,10 @@ class PropertyGame(object):
 		#print ("EnsurePlayment", playerOwingId, moneyNeeded, playerOwedId)
 
 		if self.playerMoney[playerOwingId] < moneyNeeded:
-			if self.PlayerMaxMoneyThatCanBeRaised(playerOwingId) >= moneyNeeded:
-				self.globalInterface.Log("Player {} cannot afford to pay {} immediately".format(playerOwingId, moneyNeeded))
-				self.PlayerTryRaiseMoney(playerOwingId, moneyNeeded)
-			else:
-				self.globalInterface.Log("Player {} cannot afford to pay {} and cannot raise the cash".format(playerOwingId, moneyNeeded))
-				self.PlayerGoesBankrupt(playerOwingId, playerOwedId)
-				return True
+			# Even if the bank alone cannot cover it, selling property to other
+			# players might, so the player always gets the chance to raise money
+			self.globalInterface.Log("Player {} cannot afford to pay {} immediately".format(playerOwingId, moneyNeeded))
+			self.PlayerTryRaiseMoney(playerOwingId, moneyNeeded)
 
 		if self.playerMoney[playerOwingId] < moneyNeeded:
 			self.globalInterface.Log("Player {} did not raise enough and went bankrupt".format(playerOwingId))
@@ -508,10 +537,10 @@ class PropertyGame(object):
 		# The rules are ambiguous about what actions are allowed before payment is resolved.
 		# https://boardgames.stackexchange.com/questions/6472/in-monopoly-is-it-ok-for-a-third-party-to-make-a-trade-with-a-player-who-is-abo
 		# Answer from Hasbro: https://boardgames.stackexchange.com/a/53545/45611
-		# Some actions are listed as "any time" but we have gone for a fairly strict
-		# interpretation by only allowing:
-		# * Mortgaging properties to the bank
-		# * Selling houses back to the bank
+		# Property sales are allowed at any time, so the player may:
+		# * Mortgage properties to the bank
+		# * Sell houses back to the bank
+		# * Trade with other players (properties, cash and get out of jail free cards)
 		
 		self.playerInterfaces[playerId].TryRaiseMoney(moneyNeeded, self)
 
@@ -599,6 +628,13 @@ class PropertyGame(object):
 		# https://boardgames.stackexchange.com/questions/22829/do-get-out-of-jail-free-cards-have-value
 		if playerOwedId != 'bank':
 			self.playerGetOutOfJailCards[playerOwedId].extend(self.playerGetOutOfJailCards[playerOwingId])
+		else:
+			# Bank takes them, so return them to the bottom of their decks
+			for goojc in self.playerGetOutOfJailCards[playerOwingId]:
+				if goojc['deck'] == 'chance':
+					self.chanceCards.append(goojc)
+				else:
+					self.communityCards.append(goojc)
 		self.playerGetOutOfJailCards[playerOwingId] = []
 
 		# Transfer all property to owed player
@@ -992,6 +1028,137 @@ class PropertyGame(object):
 
 		return impossible, None, reasons, 0
 
+	def NextBuildingType(self, groupId):
+		# Building evenly means every house in a group comes before any hotel
+		existingHouses, groupHouses = self.NumHousesInGroup(groupId)
+		lowest = min([g[1] for g in groupHouses])
+		if lowest < 4: return 'house'
+		if lowest == 4: return 'hotel'
+		return None
+
+	def BuildingsNeeded(self, groupId, numBuildings):
+		# Count the houses and hotels the bank must supply to reach numBuildings
+		existingHouses, groupHouses = self.NumHousesInGroup(groupId)
+		counts = [g[1] for g in groupHouses]
+		housesNeeded, hotelsNeeded = 0, 0
+		for i in range(numBuildings - existingHouses):
+			ind = counts.index(min(counts))
+			if counts[ind] >= 5: break
+			if counts[ind] < 4:
+				housesNeeded += 1
+			else:
+				hotelsNeeded += 1
+			counts[ind] += 1
+		return housesNeeded, hotelsNeeded
+
+	def GetBuildableGroups(self, playerId, buildingType):
+		out = []
+		for groupId in self.GetCompleteHouseGroups(playerId):
+			if not self.IsGroupAllUnmortgaged(groupId): continue
+			if self.NextBuildingType(groupId) != buildingType: continue
+			out.append(groupId)
+		return out
+
+	def BuildingCapacity(self, playerId, buildingType):
+		# Upper bound on how many buildings of this type a player could add
+		capacity = 0
+		for groupId in self.GetCompleteHouseGroups(playerId):
+			if not self.IsGroupAllUnmortgaged(groupId): continue
+			for spaceId, count in self.NumHousesInGroup(groupId)[1]:
+				if buildingType == 'house':
+					capacity += max(0, 4 - count)
+				elif count < 5:
+					capacity += 1
+		return capacity
+
+	def BuildBuildings(self, playerId, groupId, numBuildings):
+		# Player purchases and sales of buildings should go through this rather than
+		# SetNumBuildingsInGroup, so the building shortage rule is applied.
+		assert self.GetGroupOwner(groupId) == playerId
+		existingHouses = self.NumHousesInGroup(groupId)[0]
+
+		if numBuildings > existingHouses:
+			housesNeeded, hotelsNeeded = self.BuildingsNeeded(groupId, numBuildings)
+			if housesNeeded > 0:
+				freeHouses, freeHotels = self.GetFreeBuildings()
+				self.ResolveBuildingShortage(playerId, 'house', housesNeeded, len(freeHouses))
+
+			# Only compete for hotels if the houses needed to reach them are now available
+			housesNeeded, hotelsNeeded = self.BuildingsNeeded(groupId, numBuildings)
+			freeHouses, freeHotels = self.GetFreeBuildings()
+			if hotelsNeeded > 0 and housesNeeded <= len(freeHouses):
+				self.ResolveBuildingShortage(playerId, 'hotel', hotelsNeeded, len(freeHotels))
+
+			if self.NumHousesInGroup(groupId)[0] >= numBuildings:
+				return False, None, [], 0 # Already reached by buildings won at auction
+
+		return self.SetNumBuildingsInGroup(groupId, numBuildings)
+
+	def ResolveBuildingShortage(self, requesterId, buildingType, needed, available):
+
+		# "If there are a limited number of houses and hotels available and two or more
+		# players wish to buy more than the Bank has, the houses or hotels must be sold
+		# at auction to the highest bidder."
+		# Each building is auctioned individually. A bid must be at least the building
+		# cost of the group it will go on, and the winner builds on that group at once.
+		# If the bank has none, players must wait until some are returned.
+		if available == 0: return
+
+		others = {}
+		for plId in self.GetPlayersUnbankrupt():
+			if plId == requesterId: continue
+			capacity = self.BuildingCapacity(plId, buildingType)
+			if capacity > 0: others[plId] = capacity
+		if needed + sum(others.values()) <= available:
+			return # No shortage is possible, so don't ask anyone
+
+		demand = {requesterId: needed}
+		for plId, capacity in others.items():
+			wanted = int(self.playerInterfaces[plId].GetBuildingDemand(buildingType, available, self))
+			wanted = max(0, min(wanted, capacity))
+			if wanted > 0: demand[plId] = wanted
+		if len(demand) < 2 or sum(demand.values()) <= available:
+			return # Enough to go round
+
+		self.globalInterface.Log("Shortage of {}s: {} available, players want {}".format(buildingType, available, sum(demand.values())))
+
+		while True:
+			freeHouses, freeHotels = self.GetFreeBuildings()
+			free = freeHouses if buildingType == 'house' else freeHotels
+			if len(free) == 0: break
+
+			bidderIds = []
+			for plId in self.GetBiddersInTurnOrder(requesterId):
+				if demand.get(plId, 0) <= 0: continue
+				if len(self.GetBuildableGroups(plId, buildingType)) == 0: continue
+				bidderIds.append(plId)
+
+			if len(bidderIds) < 2:
+				break # No longer contested, so remaining buildings sell at the normal price
+
+			def AskBid(plId, highestBid, highestBidder):
+				groups = self.GetBuildableGroups(plId, buildingType)
+				bid = self.playerInterfaces[plId].GetBuildingBid(buildingType, groups, highestBid, highestBidder, self)
+				if bid is None: return None
+				bidGroupId, amount = bid[0], int(bid[1])
+				if bidGroupId not in groups: return None
+				cost = self.board[self.propertyGroup[bidGroupId][0]]['building_costs']
+				if amount < cost or amount > self.playerMoney[plId]: return None
+				return amount, bidGroupId
+
+			self.globalInterface.Log("Auction started for a {}".format(buildingType))
+			winnerId, price, winGroupId = self.OpenAuction(bidderIds, AskBid)
+			if winnerId is None:
+				break # Nobody bid, so remaining buildings sell at the normal price
+
+			existing = self.NumHousesInGroup(winGroupId)[0]
+			impossible, numAllowed, reasons, planCost = self.SetNumBuildingsInGroup(winGroupId, existing + 1, applyPayment = False)
+			assert not impossible
+			bankrupted = self.EnsurePlayment(winnerId, price, 'bank')
+			assert not bankrupted # Bids are limited to cash in hand
+			demand[winnerId] -= 1
+			self.globalInterface.Log("Player {} won a {} at auction for {}".format(winnerId, buildingType, price))
+
 	def GetPlayersUnbankrupt(self):
 		out = []
 		for i, b in enumerate(self.playerBankrupt):
@@ -999,20 +1166,138 @@ class PropertyGame(object):
 				out.append(i)
 		return out
 	
-	def ProcessTrade(self, sellPlayerId, buyerPlayerId, spaceId, money):
+	# Trading
+	# "Unimproved properties, railroads and utilities (but not buildings) may be sold
+	# to any player as a private transaction for any amount the owner can get; however,
+	# no property can be sold to another player if buildings are standing on any
+	# properties of that color-group." Get out of jail free cards may also be sold,
+	# and cash can be part of a deal, but "no player may borrow from or lend money to
+	# another player", so a trade only exchanges things the players hold now.
 
-		space = self.board[spaceId]
-		self.globalInterface.Log("Player {} sold {} to player {} for {}".format(sellPlayerId, space['name'], buyerPlayerId, money))
+	def NewTrade(self, proposerId, recipientId):
+		return TradeOffer(proposerId, recipientId)
 
-		# TODO implement more complex trades
-		assert self.playerMoney[buyerPlayerId] >= money
-		assert self.spaceOwners[spaceId] == sellPlayerId
-		if spaceId in self.propertyInGroup:
-			assert self.NumHousesInGroup(self.propertyInGroup[spaceId])[0] == 0
-		self.spaceOwners[spaceId] = buyerPlayerId
+	def TradeableSpaces(self, playerId):
+		out = []
+		for spaceId, ownerId in enumerate(self.spaceOwners):
+			if ownerId != playerId: continue
+			if spaceId in self.propertyInGroup and self.NumHousesInGroup(self.propertyInGroup[spaceId])[0] != 0: continue
+			out.append(spaceId)
+		return out
 
-		self.playerMoney[buyerPlayerId] -= money
-		self.playerMoney[sellPlayerId] += money
+	def TradeInterestDue(self, offer, side):
+		# Interest the player on this side must pay on mortgaged spaces they receive
+		interest = 0
+		for spaceId in offer.spaces[1 - side]:
+			if self.spaceMortgaged[spaceId]:
+				interest += self.MortgageInterest(spaceId)
+		return interest
+
+	def TradeProblems(self, offer):
+		# Returns a list of reasons the trade is not allowed (empty if allowed)
+		reasons = []
+		proposerId, recipientId = offer.playerIds
+		if proposerId == recipientId:
+			return ["Cannot trade with yourself"]
+		for playerId in offer.playerIds:
+			if playerId < 0 or playerId >= self.numPlayers or self.playerBankrupt[playerId]:
+				return ["Player {} cannot trade".format(playerId)]
+
+		if sum([len(sp) for sp in offer.spaces]) + sum(offer.money) + sum(offer.jailCards) == 0:
+			reasons.append("Trade is empty")
+
+		for side, playerId in enumerate(offer.playerIds):
+			tradeable = self.TradeableSpaces(playerId)
+			if len(set(offer.spaces[side])) != len(offer.spaces[side]):
+				reasons.append("Player {} lists a property twice".format(playerId))
+			for spaceId in offer.spaces[side]:
+				if spaceId not in tradeable:
+					reasons.append("Player {} cannot trade {} (not owned, or its group has buildings)".format(playerId, self.board[spaceId]['name']))
+
+			if offer.money[side] < 0 or offer.jailCards[side] < 0:
+				reasons.append("Amounts cannot be negative")
+			if offer.jailCards[side] > len(self.playerGetOutOfJailCards[playerId]):
+				reasons.append("Player {} does not have {} get out of jail free cards".format(playerId, offer.jailCards[side]))
+
+			# Cash changes hands at the same time, then interest on mortgages is due
+			cashAfter = self.playerMoney[playerId] - offer.money[side] + offer.money[1 - side]
+			if cashAfter < self.TradeInterestDue(offer, side):
+				reasons.append("Player {} cannot afford this trade".format(playerId))
+		return reasons
+
+	def DescribeTrade(self, offer):
+		lines = []
+		for side, playerId in enumerate(offer.playerIds):
+			items = [self.board[spaceId]['name'] + (" (mortgaged)" if self.spaceMortgaged[spaceId] else "") for spaceId in offer.spaces[side]]
+			if offer.money[side]: items.append("{} cash".format(offer.money[side]))
+			if offer.jailCards[side]: items.append("{} get out of jail free card(s)".format(offer.jailCards[side]))
+			if len(items) == 0: items.append("nothing")
+			lines.append("Player {} gives: {}".format(playerId, ", ".join(items)))
+		return "\n".join(lines)
+
+	def ProposeTrade(self, offer):
+		# Ask the recipient, and process the trade if they accept. Returns True if traded.
+		reasons = self.TradeProblems(offer)
+		if len(reasons) > 0:
+			return False
+		accepted = self.playerInterfaces[offer.playerIds[1]].ConsiderTrade(offer, self)
+		if not accepted:
+			self.globalInterface.Log("Player {} rejected a trade from player {}".format(offer.playerIds[1], offer.playerIds[0]))
+			return False
+		self.ProcessTrade(offer)
+		return True
+
+	def ProcessTrade(self, offer):
+
+		assert len(self.TradeProblems(offer)) == 0
+		self.globalInterface.Log("Trade agreed:\n" + self.DescribeTrade(offer))
+
+		for side, playerId in enumerate(offer.playerIds):
+			otherId = offer.playerIds[1 - side]
+			for spaceId in offer.spaces[side]:
+				self.spaceOwners[spaceId] = otherId
+
+			self.playerMoney[playerId] -= offer.money[side]
+			self.playerMoney[otherId] += offer.money[side]
+
+			for i in range(offer.jailCards[side]):
+				self.playerGetOutOfJailCards[otherId].append(self.playerGetOutOfJailCards[playerId].pop())
+
+		# A new owner of a mortgaged property must pay the 10% interest at once, then may
+		# also pay off the mortgage. If kept mortgaged, interest is charged again when it
+		# is later unmortgaged.
+		for side, playerId in enumerate(offer.playerIds):
+			received = [spaceId for spaceId in offer.spaces[1 - side] if self.spaceMortgaged[spaceId]]
+			if len(received) == 0: continue
+
+			interest = self.TradeInterestDue(offer, side)
+			self.playerMoney[playerId] -= interest
+			self.globalInterface.Log("Player {} paid {} interest on mortgaged property".format(playerId, interest))
+
+			choices = []
+			for spaceId in received:
+				choices.append([spaceId, True, self.MortgageInterest(spaceId), self.UnmortgageCost(spaceId)])
+			choices = self.playerInterfaces[playerId].UnmortgageChoices(choices, self)
+			for spaceId, propMortgaged, interest, mortgagePlusInterest in choices:
+				if propMortgaged: continue
+				space = self.board[spaceId]
+				if self.playerMoney[playerId] >= space['mortgage']:
+					self.playerMoney[playerId] -= space['mortgage']
+					self.spaceMortgaged[spaceId] = False
+					self.globalInterface.Log("Player {} paid off the mortgage on {}".format(playerId, space['name']))
+				else:
+					self.globalInterface.Log("Player {} cannot afford to pay off the mortgage on {}".format(playerId, space['name']))
+
+class TradeOffer(object):
+
+	""" A trade between two players. Each side (0 = proposer, 1 = recipient) can give
+	any mix of unimproved properties, cash and get out of jail free cards. """
+
+	def __init__(self, proposerId, recipientId):
+		self.playerIds = [proposerId, recipientId]
+		self.spaces = [[], []] # Space IDs given by each side
+		self.money = [0, 0] # Cash given by each side
+		self.jailCards = [0, 0] # Get out of jail free cards given by each side
 
 def BasicGameLoop(turnLimit = None):
 

@@ -18,7 +18,7 @@
                 160,
                 250
             ],
-            "monopoly_rent": 2,
+            "monopoly_rent": 4,
             "mortgage": 30,
             "building_costs": 50
         },
@@ -231,7 +231,7 @@
                 1000
             ],
             "monopoly_rent": 32,
-            "mortgage": 90,
+            "mortgage": 100,
             "building_costs": 100
         },
         {
@@ -604,8 +604,8 @@
             "income": 150
         },
         {
-            "name": "CrosswordCompetition",
-            "income": 10
+            "name": "AdvanceRailroad2",
+            "move_to": "station"
         }
     ]
 }

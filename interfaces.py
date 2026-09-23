@@ -40,9 +40,12 @@ class HumanInterface(object):
 		questionText = "Player {}, would you like to buy {} for {}?".format(self.playerNum, space['name'], space['price'])
 		return TrueOrFalseQuestion(questionText)
 
-	def GetActionBid(self, spaceId, gameState):
+	def GetAuctionBid(self, spaceId, highestBid, highestBidder, gameState):
 		space = gameState.board[spaceId]
-		return IntegerQuestion("Player {}, what is your maximum bid for {} (balance {})?".format(self.playerNum, space['name'], gameState.playerMoney[self.playerNum]))
+		print ("Auction for {}: highest bid {} by player {}".format(space['name'], highestBid, highestBidder))
+		bid = IntegerQuestion("Player {}, your bid (balance {})? (0 to pass)".format(self.playerNum, gameState.playerMoney[self.playerNum]))
+		if bid <= highestBid: return None
+		return bid
 
 	def UseGetOutOfJailCard(self, gameState):
 		questionText = "Player {}, would you like to use a get out of jail card?".format(self.playerNum)
@@ -55,8 +58,10 @@ class HumanInterface(object):
 	def TryRaiseMoney(self, moneyNeeded, gameState):
 		
 		while True:
+			print ("Player {} needs {} (has {})".format(self.playerNum, moneyNeeded, gameState.playerMoney[self.playerNum]))
 			print ("1. Buy/sell houses and hotels")
 			print ("2. Mortgage/unmortgage houses")
+			print ("3. Propose a trade with other players")
 			print ("-1. Done")
 
 			ch = IntegerQuestion("Choice? (-1 to quit)")
@@ -64,6 +69,7 @@ class HumanInterface(object):
 			if ch == -1: break
 			if ch == 1: self.DoTradingBuySellHouses(gameState)
 			if ch == 2: self.MortgageUnmortgageMenu(gameState)
+			if ch == 3: self.TradeMenu(gameState)
 	
 	def MortgageUnmortgageMenu(self, gameState):
 
@@ -144,85 +150,68 @@ class HumanInterface(object):
 
 	def TradeMenu(self, gameState):
 
-		
+		p2 = IntegerQuestion("Trade with player? (-1 to abort)")
+		if p2 == -1: return True
+		if p2 < 0 or p2 >= gameState.numPlayers or p2 == self.playerNum or gameState.playerBankrupt[p2]:
+			print ("Invalid player Id")
+			return True
+
+		offer = gameState.NewTrade(self.playerNum, p2)
 		while True:
-			print ("Simple (one space) trading supported. TODO add complex trades.")
-			print ("Properties:")
-			selectable = []
-			for spaceId, space in enumerate(gameState.board):
-				ownerId = gameState.spaceOwners[spaceId]
-				if ownerId is None: continue
-				print (spaceId, space['name'], ownerId)
-				selectable.append(spaceId)
+			print (gameState.DescribeTrade(offer))
+			print ("1. Add/remove a property you give")
+			print ("2. Add/remove a property you get")
+			print ("3. Set cash you give")
+			print ("4. Set cash you get")
+			print ("5. Set get out of jail free cards you give")
+			print ("6. Set get out of jail free cards you get")
+			print ("7. Propose trade")
+			print ("-1. Abort")
 
-			ch = IntegerQuestion("Select property? (-1 to quit)")
-
-			if ch in selectable:
-
-				ownerId = gameState.spaceOwners[ch]
-				space = gameState.board[ch]
-				accepted = False
-
-				if ch in gameState.propertyInGroup and gameState.NumHousesInGroup(gameState.propertyInGroup[ch])[0] != 0:
-					print ("Buildings must be sold before trading")
-					continue
-
-				if ownerId == self.playerNum:
-
-					p2 = IntegerQuestion("Trade with player? (-1 to about)")
-					if p2 == -1:
-						print ("Trade Aborted")
-						continue
-					if p2 < 0 or p2 >= gameState.numPlayers:
-						print ("Invalid player Id")
-						continue
-					if p2 == self.playerNum:
-						print ("Can't trade with self")
-						continue
-					if gameState.playerBankrupt[p2]:
-						print ("Player is backrupt")
-						continue
-					oppInterface = gameState.playerInterfaces[p2]
-
-					offer = IntegerQuestion("Offer to sell {} for? (-1 to abort)".format(space['name']))
-					if offer < 0:
-						# Tim note: I used to play an AI on C64 what didn't check for this
-						# and always accepted a negative trade!
-						print ("Cannot be a negative offer")
-						continue
-					accepted = oppInterface.OfferTrade(self.playerNum, ch, True, offer, gameState)
-					
-					if accepted:
-						if gameState.playerMoney[p2] >= offer:
-							gameState.ProcessTrade(self.playerNum, p2, ch, offer)
-						else:
-							print ("Player cannot afford sale")
-					else:
-						print ("Player rejected proposed trade")
-
-				else:
-					oppInterface = gameState.playerInterfaces[ownerId]
-
-					offer = IntegerQuestion("Offer to buy {} from player {} for? (-1 to abort)".format(space['name'], ownerId))
-					if offer < 0:
-						print ("Cannot be a negative offer")
-						continue
-
-					accepted = oppInterface.OfferTrade(self.playerNum, ch, False, offer, gameState)
-
-					if accepted:
-						if gameState.playerMoney[self.playerNum] >= offer:
-							gameState.ProcessTrade(ownerId, self.playerNum, ch, offer)
-						else:
-							print ("Player cannot afford sale")							
-
-					else:
-						print ("Player rejected proposed trade")
-
+			ch = IntegerQuestion("Choice? (-1 to abort)")
 			if ch == -1: break
 
-		return True
+			if ch in [1, 2]:
+				side = ch - 1
+				tradeable = gameState.TradeableSpaces(offer.playerIds[side])
+				for spaceId in tradeable:
+					space = gameState.board[spaceId]
+					print (spaceId, space['name'], "mortgaged=", gameState.spaceMortgaged[spaceId], "in trade=", spaceId in offer.spaces[side])
+				spaceId = IntegerQuestion("Property to add/remove? (-1 to go back)")
+				if spaceId not in tradeable: continue
+				if spaceId in offer.spaces[side]:
+					offer.spaces[side].remove(spaceId)
+				else:
+					offer.spaces[side].append(spaceId)
 
+			if ch in [3, 4]:
+				# Tim note: I used to play an AI on C64 what didn't check for this
+				# and always accepted a negative trade!
+				amount = IntegerQuestion("Amount?")
+				if amount < 0:
+					print ("Cannot be negative")
+					continue
+				offer.money[ch - 3] = amount
+
+			if ch in [5, 6]:
+				side = ch - 5
+				held = len(gameState.playerGetOutOfJailCards[offer.playerIds[side]])
+				count = IntegerQuestion("Number of cards (0 to {})?".format(held))
+				if count < 0 or count > held: continue
+				offer.jailCards[side] = count
+
+			if ch == 7:
+				reasons = gameState.TradeProblems(offer)
+				if len(reasons) > 0:
+					for reason in reasons: print (reason)
+					continue
+				if gameState.ProposeTrade(offer):
+					print ("Trade accepted")
+				else:
+					print ("Player rejected proposed trade")
+				break
+
+		return True
 
 	def DoTradingBuySellHouses(self, gameState):
 		completeGroups = gameState.GetCompleteHouseGroups(self.playerNum)
@@ -268,20 +257,28 @@ class HumanInterface(object):
 			
 			if numBuildings == -1: break
 			if numBuildings < 0: continue
-			impossible, numAllowed, reasons, planCost = gameState.SetNumBuildingsInGroup(groupId, numBuildings)
+			impossible, numAllowed, reasons, planCost = gameState.BuildBuildings(self.playerNum, groupId, numBuildings)
 			if impossible: print ("Not possible:", reasons)
 
 	def ShowTradePlayerSelect(self):
 		return True
 
-	def OfferTrade(self, fromPlayerId, spaceId, isSellOffer, moneyOffer, gameState):
+	def GetBuildingDemand(self, buildingType, available, gameState):
+		return IntegerQuestion("Player {}, there is a {} shortage ({} left). How many would you like to buy? (0 for none)".format(self.playerNum, buildingType, available))
 
-		verb = "sell"
-		if isSellOffer: verb = "buy"
-		space = gameState.board[spaceId]
-		
-		questionText = "Player {}, would you like to {} {} for {}?".format(self.playerNum, verb, space['name'], moneyOffer)
-		return TrueOrFalseQuestion(questionText)
+	def GetBuildingBid(self, buildingType, groupIds, highestBid, highestBidder, gameState):
+		print ("Auction for a {}: highest bid {} by player {}".format(buildingType, highestBid, highestBidder))
+		print ("Player {}, bid for a {} (balance {}). Groups you can build on:".format(self.playerNum, buildingType, gameState.playerMoney[self.playerNum]))
+		for groupId in groupIds:
+			space = gameState.board[gameState.propertyGroup[groupId][0]]
+			print ("Group:", groupId, "minimum bid", space['building_costs'])
+		groupId = IntegerQuestion("Group to build on? (-1 to pass)")
+		if groupId == -1: return None
+		return groupId, IntegerQuestion("Bid?")
+
+	def ConsiderTrade(self, offer, gameState):
+		print (gameState.DescribeTrade(offer))
+		return TrueOrFalseQuestion("Player {}, do you accept this trade?".format(self.playerNum))
 
 class RandomInterface(object):
 	def __init__(self, playerNum):
@@ -290,9 +287,11 @@ class RandomInterface(object):
 	def OptionToBuy(self, spaceId, gameState):
 		return random.randint(0, 1)
 
-	def GetActionBid(self, spaceId, gameState):
+	def GetAuctionBid(self, spaceId, highestBid, highestBidder, gameState):
+		# Raise by a random amount, up to the list price, or pass
 		space = gameState.board[spaceId]
-		return random.randint(0, space['price'])
+		if highestBid >= space['price'] or not random.randint(0, 2): return None
+		return random.randint(highestBid + 1, min(space['price'], highestBid + 50))
 
 	def UseGetOutOfJailCard(self, gameState):
 		return random.randint(0, 1)
@@ -301,6 +300,14 @@ class RandomInterface(object):
 		return random.randint(0, 1)
 
 	def TryRaiseMoney(self, moneyNeeded, gameState):
+
+		if gameState.PlayerMaxMoneyThatCanBeRaised(self.playerNum) < moneyNeeded:
+			# The bank alone cannot cover it, so try selling property to other players
+			for attempt in range(3):
+				self.TrySellForCash(gameState)
+				if gameState.PlayerMaxMoneyThatCanBeRaised(self.playerNum) >= moneyNeeded: break
+			if gameState.PlayerMaxMoneyThatCanBeRaised(self.playerNum) < moneyNeeded:
+				return # Hopeless, so don't bother mortgaging
 
 		# Find suitable properties
 		unmortgaged = []
@@ -362,52 +369,30 @@ class RandomInterface(object):
 	def DoTrading(self, gameState):
 		cho = random.randint(0, 2)
 		if cho == 0:
-			# Trade random building
-			sellable, buyable = [], []
-			for spaceId, space in enumerate(gameState.board):
-				ownerId = gameState.spaceOwners[spaceId]
-				if ownerId is None: continue
-				if spaceId in gameState.propertyInGroup and gameState.NumHousesInGroup(gameState.propertyInGroup[spaceId])[0] != 0: continue
-				if ownerId == self.playerNum:
-					sellable.append(spaceId)
+			# Propose a random trade
+			opponents = [oi for oi in gameState.GetPlayersUnbankrupt() if oi != self.playerNum]
+			if len(opponents) > 0:
+				offer = gameState.NewTrade(self.playerNum, random.choice(opponents))
+
+				worth = [0, 0]
+				for side, playerId in enumerate(offer.playerIds):
+					tradeable = gameState.TradeableSpaces(playerId)
+					random.shuffle(tradeable)
+					offer.spaces[side] = tradeable[:random.randint(0, min(2, len(tradeable)))]
+					worth[side] = sum([gameState.board[spaceId]['price'] for spaceId in offer.spaces[side]])
+					if len(gameState.playerGetOutOfJailCards[playerId]) > 0 and not random.randint(0, 3):
+						offer.jailCards[side] = 1
+						worth[side] += 50
+
+				# Whoever gets the better deal pays some cash
+				amount = int(abs(worth[1] - worth[0]) * random.random() * 1.5)
+				if worth[1] > worth[0]:
+					offer.money[0] = amount
 				else:
-					buyable.append(spaceId)
+					offer.money[1] = amount
 
-			if bool(random.randint(0, 1)):
-
-				# Oppenents
-				opponents = []
-				for oi, ban in enumerate(gameState.playerBankrupt):
-					if oi == self.playerNum: continue
-					if not ban: opponents.append(oi)			
-				oppenentId, oppInterface = None, None
-				if len(opponents) > 0:
-					oppenentId = random.choice(opponents)
-					oppInterface = gameState.playerInterfaces[oppenentId]
-
-				if len(sellable) > 0 and len(opponents) > 0: #Sell
-					spaceId = random.choice(sellable)
-					space = gameState.board[spaceId]
-
-					money = int(space['price'] * random.random() * 1.5)
-
-					accepted = oppInterface.OfferTrade(self.playerNum, spaceId, True, money, gameState)
-
-					if accepted and gameState.playerMoney[oppenentId] >= money:
-						gameState.ProcessTrade(self.playerNum, oppenentId, spaceId, money)
-			else:
-				if len(buyable) > 0: #Buy
-					spaceId = random.choice(buyable)
-					space = gameState.board[spaceId]
-					ownerId = gameState.spaceOwners[spaceId]
-					oppInterface = gameState.playerInterfaces[ownerId]
-
-					money = int(space['price'] * random.random() * 1.5)
-
-					accepted = oppInterface.OfferTrade(self.playerNum, spaceId, False, money, gameState)
-
-					if accepted and gameState.playerMoney[self.playerNum] >= money:
-						gameState.ProcessTrade(ownerId, self.playerNum, spaceId, money)
+				if len(gameState.TradeProblems(offer)) == 0:
+					gameState.ProposeTrade(offer)
 
 		elif cho == 1:
 
@@ -425,10 +410,7 @@ class RandomInterface(object):
 				group = gameState.propertyGroup[groupId]
 				numBuildings = random.randint(0, 5 * len(group))
 
-				impossible, numAllowed, reasons, planCost = gameState.SetNumBuildingsInGroup(groupId, numBuildings, planOnly=True)
-		
-				if not impossible:
-					gameState.SetNumBuildingsInGroup(groupId, numBuildings)
+				gameState.BuildBuildings(self.playerNum, groupId, numBuildings)
 
 		elif cho == 2:
 
@@ -449,8 +431,32 @@ class RandomInterface(object):
 	def ShowTradePlayerSelect(self):
 		return False
 
-	def OfferTrade(self, fromPlayerId, spaceId, isSellOffer, moneyOffer, gameState):
+	def ConsiderTrade(self, offer, gameState):
 		return bool(random.randint(0, 1))
+
+	def TrySellForCash(self, gameState):
+		# Offer a random property to a random player for cash
+		tradeable = gameState.TradeableSpaces(self.playerNum)
+		opponents = [oi for oi in gameState.GetPlayersUnbankrupt() if oi != self.playerNum]
+		if len(tradeable) == 0 or len(opponents) == 0: return
+		offer = gameState.NewTrade(self.playerNum, random.choice(opponents))
+		spaceId = random.choice(tradeable)
+		offer.spaces[0] = [spaceId]
+		offer.money[1] = int(gameState.board[spaceId]['price'] * random.random() * 1.5)
+		if len(gameState.TradeProblems(offer)) == 0:
+			gameState.ProposeTrade(offer)
+
+	def GetBuildingDemand(self, buildingType, available, gameState):
+		return random.randint(0, available)
+
+	def GetBuildingBid(self, buildingType, groupIds, highestBid, highestBidder, gameState):
+		# Raise by a random amount, up to twice the building cost, or pass
+		groupId = random.choice(groupIds)
+		cost = gameState.board[gameState.propertyGroup[groupId][0]]['building_costs']
+		lowest = max(highestBid + 1, cost)
+		highest = min(gameState.playerMoney[self.playerNum], 2 * cost)
+		if lowest > highest or not random.randint(0, 3): return None
+		return groupId, random.randint(lowest, min(highest, lowest + 20))
 
 
 class GlobalInterface(object):
@@ -469,15 +475,20 @@ class TestInterface(object):
 		self.optionToBuy = None
 		self.getAuctionBid = None
 		self.payGetOutOfJail = False
+		self.buildingDemand = 0
+		self.buildingBid = None
+		self.acceptTrade = False
 
 	def OptionToBuy(self, spaceId, gameState):
 		if self.optionToBuy is None:
 			raise RuntimeError()
 		return self.optionToBuy
 
-	def GetActionBid(self, spaceId, gameState):
+	def GetAuctionBid(self, spaceId, highestBid, highestBidder, gameState):
+		# Bids getAuctionBid if that beats the current bid, otherwise passes
 		if self.getAuctionBid is None:
 			raise RuntimeError()
+		if self.getAuctionBid <= highestBid: return None
 		return self.getAuctionBid
 
 	def UseGetOutOfJailCard(self, gameState):
@@ -498,6 +509,15 @@ class TestInterface(object):
 	def ShowTradePlayerSelect(self):
 		return False
 
-	def OfferTrade(self, fromPlayerId, spaceId, isSellOffer, moneyOffer, gameState):
-		return False
+	def ConsiderTrade(self, offer, gameState):
+		return self.acceptTrade
+
+	def GetBuildingDemand(self, buildingType, available, gameState):
+		return self.buildingDemand
+
+	def GetBuildingBid(self, buildingType, groupIds, highestBid, highestBidder, gameState):
+		# buildingBid is (groupId, bid), made if it beats the current bid
+		if self.buildingBid is None: return None
+		if self.buildingBid[1] <= highestBid: return None
+		return self.buildingBid
 
