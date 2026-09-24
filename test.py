@@ -1534,6 +1534,49 @@ def CheckTradeLimits():
 	if NeverFinished.calls != propertyGame.maxFreeTradingPasses:
 		raise RuntimeError()
 
+def CheckBasicAITrading():
+
+	# The basic AI offers a trade for the last piece of a colour set, then builds on it
+	playerInterfaces = [BasicAIInterface(0), TestInterface(1), TestInterface(2)]
+	propertyGame = PropertyGame(GlobalInterface(), playerInterfaces, rollForFirstPlayer=False)
+	for spaceId in (16, 18): # St. James Place and Tennessee Avenue
+		propertyGame.spaceOwners[spaceId] = 0
+	propertyGame.spaceOwners[19] = 1 # New York Avenue
+	playerInterfaces[1].acceptTrade = True
+	playerInterfaces[0].DoTrading(propertyGame)
+	if propertyGame.GetGroupOwner(3) != 0 or propertyGame.playerMoney[1] <= 1500:
+		raise RuntimeError()
+	if propertyGame.NumHousesInGroup(3)[0] == 0:
+		raise RuntimeError()
+
+	# It won't break up its set for a little cash
+	offer = propertyGame.NewTrade(1, 0)
+	offer.spaces[1] = [19]
+	offer.money[0] = 100
+	if playerInterfaces[0].ConsiderTrade(offer, propertyGame):
+		raise RuntimeError()
+
+	# It accepts a trade that is clearly good for it
+	propertyGame.spaceOwners[39] = 1 # Boardwalk
+	propertyGame.spaceOwners[1] = 0 # Mediterranean Avenue
+	offer = propertyGame.NewTrade(1, 0)
+	offer.spaces = [[39], [1]]
+	if not playerInterfaces[0].ConsiderTrade(offer, propertyGame):
+		raise RuntimeError()
+
+	# An offer turned down isn't repeated straight away
+	propertyGame = PropertyGame(GlobalInterface(), [BasicAIInterface(0), TestInterface(1)], rollForFirstPlayer=False)
+	propertyGame.spaceOwners[16] = propertyGame.spaceOwners[18] = 0
+	propertyGame.spaceOwners[19] = 1
+	offers = []
+	original = propertyGame.ProposeTrade
+	propertyGame.ProposeTrade = lambda offer: offers.append(offer) or original(offer)
+	for i in range(3):
+		propertyGame.playerInterfaces[0].DoTrading(propertyGame)
+		propertyGame.EndPlayerTurn()
+	if len(offers) != 1:
+		raise RuntimeError()
+
 def Test():
 
 	CheckBuildingCode()
@@ -1545,6 +1588,7 @@ def Test():
 	CheckFirstPlayer()
 	CheckCounterOffer()
 	CheckTradeLimits()
+	CheckBasicAITrading()
 
 if __name__=="__main__":
 	Test()

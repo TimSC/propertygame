@@ -5,8 +5,20 @@ class BasicAIInterface(PlayerInterface):
 	"""
 	A simple AI that tries to complete colour sets and build on them. It keeps a cash
 	reserve, bids up to what a property is worth to it, mortgages its least useful
-	property first when short of money, and doesn't trade.
+	property first when short of money, and trades for the pieces it needs.
 	"""
+
+	# How trades are judged: a trade must be worth at least minimumGain to this player, and
+	# it doesn't let the other player gain much more (fairness) from it
+	minimumGain = 10
+	fairness = 0.8
+	jailCardValue = 30
+	retryRejectedAfter = 12 # Calls to DoTrading before asking the same player for the same set again
+
+	def __init__(self, playerNum):
+		super().__init__(playerNum)
+		self.tradingRounds = 0
+		self.rejectedOffers = {} # (opponent, groupId) -> trading round an offer for that set was rejected in
 
 	def SetOf(self, spaceId, gameState):
 		# The spaces that go together for rent: a colour group, the stations or the utilities
@@ -115,9 +127,126 @@ class BasicAIInterface(PlayerInterface):
 				cash -= principal
 		return choices
 
-	def DoTrading(self, gameState):
-		# Between turns: pay off mortgages, then build on complete sets
+	# Trading
+
+	def SetValue(self, playerId, members, owners, gameState):
+		# Value of a player's holding in one set, given who owns what (owners)
+		mine = [s for s in members if owners[s] == playerId]
+		if not mine:
+			return 0
+		prices = sum(gameState.board[s]['price'] for s in mine)
+		kind = gameState.board[members[0]]['type']
+		if kind == 'station':
+			multiplier = [0, 1.0, 1.15, 1.35, 1.6][len(mine)]
+		elif kind == 'utility':
+			multiplier = [0, 1.0, 1.3][len(mine)]
+		elif len(mine) == len(members):
+			multiplier = 2.0 # A complete colour set can be built on
+		elif all(owners[s] in (None, playerId) for s in members):
+			multiplier = 1.0 + 0.3 * len(mine) / len(members) # Could still be completed
+		else:
+			multiplier = 1.0 # Blocked by an opponent
+		# A mortgaged property is worth less by what it would cost to pay off
+		mortgages = sum(gameState.UnmortgageCost(s) for s in mine if gameState.spaceMortgaged[s])
+		return prices * multiplier - mortgages
+
+	def PositionValue(self, playerId, owners, gameState):
+		sets = list(gameState.propertyGroup.values()) + [gameState.boardStations, gameState.boardUtilities]
+		return sum(self.SetValue(playerId, members, owners, gameState) for members in sets)
+
+	def TradeGain(self, offer, side, gameState, before=None):
+		# How much better off the player on this side of the offer would be. before is
+		# their current position value, if already known.
+		owners = list(gameState.spaceOwners)
+		for fromSide in (0, 1):
+			for spaceId in offer.spaces[fromSide]:
+				owners[spaceId] = offer.playerIds[1 - fromSide]
+		playerId = offer.playerIds[side]
+		if before is None:
+			before = self.PositionValue(playerId, gameState.spaceOwners, gameState)
+		gain = self.PositionValue(playerId, owners, gameState) - before
+		gain += offer.money[1 - side] - offer.money[side]
+		gain += self.jailCardValue * (offer.jailCards[1 - side] - offer.jailCards[side])
+		gain -= gameState.TradeInterestDue(offer, side)
+		return gain
+
+	def Acceptable(self, offer, side, gameState):
+		# Would the player on this side accept, judged the way this AI judges trades?
+		gain = self.TradeGain(offer, side, gameState)
+		otherGain = self.TradeGain(offer, 1 - side, gameState)
+		return gain >= self.minimumGain and gain >= self.fairness * otherGain
+
+	def ConsiderTrade(self, offer, gameState):
 		me = self.playerNum
+		money = gameState.playerMoney[me]
+		cashAfter = money - offer.money[1] + offer.money[0] - gameState.TradeInterestDue(offer, 1)
+		if cashAfter < min(money, self.Reserve(gameState) // 2):
+			return False # Would leave too little cash for rent
+		return self.Acceptable(offer, 1, gameState)
+
+	def FindTradeOffer(self, gameState):
+		# Look for an opponent holding the last pieces of a colour set, and the best offer
+		# for them that they should still accept
+		me = self.playerNum
+		money = gameState.playerMoney[me]
+		reserve = self.Reserve(gameState)
+		mine = gameState.TradeableSpaces(me)
+		complete = set(gameState.GetCompleteHouseGroups(me))
+		best = None
+		for groupId, group in gameState.propertyGroup.items():
+			if groupId in complete or not any(gameState.spaceOwners[s] == me for s in group):
+				continue
+			missing = [s for s in group if gameState.spaceOwners[s] != me]
+			holders = set(gameState.spaceOwners[s] for s in missing)
+			if None in holders or len(holders) != 1:
+				continue # Still for sale, or held by more than one opponent
+			opponent = holders.pop()
+			if gameState.playerBankrupt[opponent] or any(s not in gameState.TradeableSpaces(opponent) for s in missing):
+				continue
+
+			# Offer cash, or one of the spare properties least useful to me plus cash
+			spare = [s for s in mine if s not in group and gameState.propertyInGroup.get(s) not in complete]
+			spare = sorted(spare, key = lambda s: self.Worth(s, gameState))[:8]
+			myBefore = self.PositionValue(me, gameState.spaceOwners, gameState)
+			theirBefore = self.PositionValue(opponent, gameState.spaceOwners, gameState)
+			for give in [[]] + [[s] for s in spare]:
+				offer = gameState.NewTrade(me, opponent)
+				offer.spaces = [give, list(missing)]
+				# Gains before any cash changes hands. Cash just moves value between us.
+				myGain = self.TradeGain(offer, 0, gameState, myBefore)
+				theirGain = self.TradeGain(offer, 1, gameState, theirBefore)
+
+				# Cash (positive: paid by me) that makes it acceptable to them:
+				# theirGain + cash >= fairness * (myGain - cash) + minimumGain
+				cash = (self.fairness * myGain + self.minimumGain - theirGain) / (1 + self.fairness)
+				cash = int(-(-cash // 10) * 10) # Round up to 10s
+				if cash >= 0:
+					offer.money = [cash, 0]
+				else:
+					cash = -min(-cash, gameState.playerMoney[opponent])
+					offer.money = [0, -cash]
+				myNet, theirNet = myGain - cash, theirGain + cash
+				if myNet < self.minimumGain or money - offer.money[0] < reserve:
+					continue
+				if myNet < self.fairness * theirNet or theirNet < self.minimumGain or theirNet < self.fairness * myNet:
+					continue # Not a trade both sides would accept
+				if gameState.TradeProblems(offer):
+					continue
+				if self.rejectedOffers.get((opponent, groupId), -99) > self.tradingRounds - self.retryRejectedAfter:
+					continue # They turned down an offer for this set recently
+				if best is None or myNet > best[0]:
+					best = (myNet, offer)
+		return best[1] if best is not None else None
+
+	def DoTrading(self, gameState):
+		# Between turns: try one trade for a set, pay off mortgages, then build on complete sets
+		me = self.playerNum
+		self.tradingRounds += 1
+		offer = self.FindTradeOffer(gameState)
+		if offer is not None and not gameState.ProposeTrade(offer):
+			groupId = gameState.propertyInGroup[offer.spaces[1][0]]
+			self.rejectedOffers[(offer.playerIds[1], groupId)] = self.tradingRounds
+
 		reserve = self.Reserve(gameState)
 		mortgaged = [s for s, owner in enumerate(gameState.spaceOwners) if owner == me and gameState.spaceMortgaged[s]]
 		for spaceId in sorted(mortgaged, key = lambda s: -self.Worth(s, gameState)):
@@ -150,9 +279,6 @@ class BasicAIInterface(PlayerInterface):
 
 	def ShowTradePlayerSelect(self):
 		return False
-
-	def ConsiderTrade(self, offer, gameState):
-		return False # Doesn't trade yet
 
 	def GetBuildingDemand(self, buildingType, available, gameState):
 		groups = gameState.GetBuildableGroups(self.playerNum, buildingType)
