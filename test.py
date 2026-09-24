@@ -1266,17 +1266,19 @@ def SeriousBuild(propertyGame, row, player, groupId, numBuildings, expectedSpace
 
 def CheckSeriousGameplay():
 
-	# Replays "Monopoly, But SERIOUS" (No Rolls Barred), UK board.
+	# Replays "Monopoly, But SERIOUS" (No Rolls Barred). The video uses the UK board, which has the
+	# same layout, prices and rents as the US board, so this uses the US board and the US cards with
+	# the same effects. Comments use the UK names, as in serious-turns.md.
 	# https://www.youtube.com/watch?v=cDmxXT2o9sE
 	# Row numbers and players (1-3) refer to serious-turns.md. Where only a dice total
 	# was visible, a non-double pair with that total is used.
 	playerInterfaces = [TestInterface(0), TestInterface(1), TestInterface(2)]
 	globalInterface = GlobalInterface()
-	propertyGame = PropertyGame(globalInterface, playerInterfaces, "property-board-uk.txt")
+	propertyGame = PropertyGame(globalInterface, playerInterfaces, "property-board-us.txt")
 	propertyGame.playerTurn = 2 # Player 3 rolled highest to start
 
-	for i, cardName in enumerate(["GetOutJailFree", "AdvancePallMall", "AdvanceMayfair", "BuildingLoanMatures",
-		"AdvanceTrafalgarSquare", "Chairperson", "GoBack3Spaces", "SpeedingFine"]):
+	for i, cardName in enumerate(["GetOutJailFree", "AdvanceStCharlesPlace", "TripBoardwalk", "BuildingLoadMature",
+		"AdvanceIllinois", "Chairman", "GoBack3Spaces", "PoorTax"]):
 		SetCardPosition(propertyGame.chanceCards, cardName, i)
 	for i, cardName in enumerate(["BankError", "IncomeTaxRefund", "AdvanceToGo", "GoToJailCard", "Birthday", "GetOutJailFree"]):
 		SetCardPosition(propertyGame.communityCards, cardName, i)
@@ -1447,6 +1449,46 @@ def CheckPlayerInterfaces():
 			if list(inspect.signature(implementation).parameters) != list(inspect.signature(method).parameters):
 				raise RuntimeError("{}.{} has different parameters".format(cls.__name__, name))
 
+def CheckFirstPlayer():
+
+	# Highest roll goes first; players tied for highest roll again
+	playerInterfaces = [TestInterface(0), TestInterface(1), TestInterface(2)]
+	propertyGame = PropertyGame(GlobalInterface(), playerInterfaces, rollForFirstPlayer=False)
+	first = propertyGame.RollForFirstPlayer([(3,4), (6,3), (4,5), (1,1), (2,3)]) # 7, 9, 9, then players 1 and 2 roll again: 2, 5
+	if first != 2 or propertyGame.playerTurn != 2:
+		raise RuntimeError()
+
+	# Play then passes in player order
+	order = []
+	for i in range(4):
+		propertyGame.EndPlayerTurn()
+		order.append(propertyGame.playerTurn)
+	if order != [0, 1, 2, 0]:
+		raise RuntimeError()
+
+def CheckCounterOffer():
+
+	# A counter-offer is a fresh trade back to the proposer, starting from the original terms
+	playerInterfaces = [TestInterface(0), TestInterface(1), TestInterface(2)]
+	propertyGame = PropertyGame(GlobalInterface(), playerInterfaces, rollForFirstPlayer=False)
+	propertyGame.spaceOwners[39] = 0
+	propertyGame.spaceOwners[37] = 1
+	offer = propertyGame.NewTrade(0, 1)
+	offer.spaces = [[39], [37]]
+	offer.money = [0, 100]
+
+	counter = propertyGame.CounterOffer(offer)
+	if counter.playerIds != [1, 0] or counter.spaces != [[37], [39]] or counter.money != [100, 0]:
+		raise RuntimeError()
+
+	# Player 1 wants 50 more, and player 0 accepts
+	counter.money = [50, 0]
+	playerInterfaces[0].acceptTrade = True
+	if not propertyGame.ProposeTrade(counter):
+		raise RuntimeError()
+	if propertyGame.spaceOwners[39] != 1 or propertyGame.spaceOwners[37] != 0 or propertyGame.playerMoney != [1550, 1450, 1500]:
+		raise RuntimeError()
+
 def Test():
 
 	CheckBuildingCode()
@@ -1455,6 +1497,8 @@ def Test():
 	CheckAdvanceToGo()
 	CheckSeriousGameplay()
 	CheckPlayerInterfaces()
+	CheckFirstPlayer()
+	CheckCounterOffer()
 
 if __name__=="__main__":
 	Test()

@@ -5,7 +5,7 @@
 
 ## Setup
 
-- **Board:** UK (`property-board-uk.txt`) with the modern UK card decks. The flavour text on the cards is new, but they behave like the standard cards (see *Cards* below).
+- **Board:** the video is played on a UK board with the modern UK card decks, and this worksheet uses its names. The replay runs on the US board (`property-board-us.txt`) just as well: the layout, prices and rents are the same, and every card drawn has a US card with the same effect (for example, advance to Pall Mall is advance to St. Charles Place, and the swan is the poor tax). See *Cards seen* below.
 - **Players:** three, numbered 1–3 in turn order. Player 3 rolled the 9 and starts. A dealer acts as banker and doesn't take turns.
 - **Starting money:** 1500 each. The replay confirms this: every balance matches.
 - **Dice:** where only a total was visible (rows 7, 10, 14, 30, 83), the replay uses a pair that isn't a double.

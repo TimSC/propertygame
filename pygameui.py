@@ -3,7 +3,7 @@ Pygame user interface for the property game.
 
 Run with:  venv/bin/python pygameui.py
 
-Choose 2-8 players, whether each is a human or the random AI, and the board. Humans
+Choose 2-8 players and whether each is a human or the random AI. Humans
 share the screen (hot seat), and every decision the engine needs is asked in a dialog.
 Games can be all AI, with the speed set from the side panel.
 """
@@ -36,7 +36,7 @@ PLAYER_COLOURS = [("Red", (220, 50, 50)), ("Blue", (50, 100, 230)), ("Green", (4
 	("Yellow", (235, 200, 20)), ("Purple", (150, 70, 200)), ("Orange", (245, 140, 30)),
 	("Cyan", (40, 190, 200)), ("Pink", (240, 110, 180))]
 SPEEDS = [("Slow", 700), ("Normal", 250), ("Fast", 40), ("Instant", 0)]
-BOARDS = [("US", "property-board-us.txt", "$"), ("UK", "property-board-uk.txt", "£")]
+BOARDS = [("US", "property-board-us.txt", "$")] # The setup screen offers a choice if there is more than one
 SHORT_NAMES = [(" Avenue", " Ave"), (" Street", " St"), (" Railroad", " RR"), (" Raiload", " RR"),
 	(" Station", " Stn"), (" Place", " Pl"), (" Company", " Co"), ("Community Chest", "Community Chest")]
 
@@ -78,6 +78,8 @@ class UI(object):
 		self.statusText = None
 		self.turnLimit = None # Used by automated testing
 		self.logsSinceDraw = 0
+		self.showEveryLog = False # Pause after every log line, not just on AI turns
+		self.pendingCounterOffers = [] # (playerId, TradeOffer) to open once the original offer is settled
 
 	# Drawing helpers
 
@@ -620,7 +622,7 @@ class UI(object):
 			self.dice = (int(match.group(1)), int(match.group(2)))
 		self.log.append(self.Pretty(event))
 		milliseconds = SPEEDS[self.speed][1]
-		if milliseconds > 0 and self.game is not None and not self.isHuman[self.game.playerTurn]:
+		if milliseconds > 0 and self.game is not None and (self.showEveryLog or not self.isHuman[self.game.playerTurn]):
 			self.Wait(milliseconds)
 		else:
 			# Keep the window responsive during fast play
@@ -632,7 +634,7 @@ class UI(object):
 	def Setup(self):
 		numPlayers = 3
 		kinds = [True] + [False] * 7
-		board = 1
+		board = 0
 		while True:
 			buttons = []
 			left, top = 330, 150
@@ -643,10 +645,12 @@ class UI(object):
 				buttons.append(Button("Human", ("kind", p, True), pygame.Rect(left + 230, y, 100, 36), selected=kinds[p]))
 				buttons.append(Button("AI", ("kind", p, False), pygame.Rect(left + 340, y, 100, 36), selected=not kinds[p]))
 			y = top + 60 + 8 * 44 + 10
-			for k, (label, filename, currency) in enumerate(BOARDS):
-				buttons.append(Button(label, ("board", k), pygame.Rect(left + 230 + k * 110, y, 100, 36), selected=(k == board)))
+			speedY = y + 50 if len(BOARDS) > 1 else y
+			if len(BOARDS) > 1:
+				for k, (label, filename, currency) in enumerate(BOARDS):
+					buttons.append(Button(label, ("board", k), pygame.Rect(left + 230 + k * 110, y, 100, 36), selected=(k == board)))
 			for k, (label, ms) in enumerate(SPEEDS):
-				buttons.append(Button(label, ("speed", k), pygame.Rect(left + 230 + k * 90, y + 50, 84, 36), selected=(k == self.speed)))
+				buttons.append(Button(label, ("speed", k), pygame.Rect(left + 230 + k * 90, speedY, 84, 36), selected=(k == self.speed)))
 			buttons.append(Button("Start game", ("start",), pygame.Rect(left + 130, y + 120, 180, 44), colour=(190, 230, 190)))
 			buttons.append(Button("Quit", ("exit",), pygame.Rect(left + 330, y + 120, 120, 44)))
 
@@ -659,8 +663,9 @@ class UI(object):
 					pygame.draw.circle(self.screen, PLAYER_COLOURS[p][1], (left + 12, y + 18), 12)
 					self.Text(PLAYER_COLOURS[p][0], (left + 34, y + 8), 28, WHITE)
 				y = top + 60 + 8 * 44 + 10
-				self.Text("Board", (left, y + 8), 28, WHITE)
-				self.Text("AI speed", (left, y + 58), 28, WHITE)
+				if len(BOARDS) > 1:
+					self.Text("Board", (left, y + 8), 28, WHITE)
+				self.Text("AI speed", (left, speedY + 8), 28, WHITE)
 				if not any(kinds[:numPlayers]):
 					self.Text("All players are AI: sit back and watch", (WINDOW[0] // 2, y + 180), 22, (200, 220, 200), centre=True)
 
@@ -680,9 +685,19 @@ class UI(object):
 		self.log = []
 		self.dice = None
 		self.statusText = None
-		self.game = PropertyGame(PygameGlobalInterface(self), interfaces, boardFile)
+		self.game = PropertyGame(PygameGlobalInterface(self), interfaces, boardFile, rollForFirstPlayer=False)
 		game = self.game
-		self.AddLog("{} goes first".format(self.names[game.playerTurn]))
+
+		# Everyone rolls to decide who goes first; play then passes in player order
+		self.statusText = "Rolling to decide who goes first"
+		self.showEveryLog = True
+		first = game.RollForFirstPlayer()
+		self.showEveryLog = False
+		self.statusText = None
+		if any(self.isHuman):
+			order = [self.names[(first + k) % numPlayers] for k in range(numPlayers)]
+			self.Message("{} goes first".format(self.names[first]), [line for line in self.log if "to decide who goes first" in line or "tied" in line]
+				+ ["Play order: " + ", ".join(order)])
 
 		turns = 0
 		while len(game.GetPlayersUnbankrupt()) > 1:
@@ -698,10 +713,13 @@ class UI(object):
 			game.DoTurn()
 			game.EndPlayerTurn()
 
+			self.ProcessCounterOffers()
+
 			# AI players can build, mortgage and trade between turns
 			for q in game.GetPlayersUnbankrupt():
 				if not self.isHuman[q]:
 					interfaces[q].DoTrading(game)
+					self.ProcessCounterOffers()
 
 		winners = game.GetPlayersUnbankrupt()
 		title = "{} wins!".format(self.names[winners[0]]) if winners else "Everyone is bankrupt!"
@@ -831,16 +849,32 @@ class UI(object):
 			if choice[0] == "mortgage": game.MortgageSpace(choice[1])
 			if choice[0] == "unmortgage": game.UnmortgageSpace(choice[1])
 
-	def ManageTrade(self, p):
+	def ProcessCounterOffers(self):
+		# Open counter-offers made while considering a trade. A counter-offer can itself
+		# get a counter-offer, so keep going until there are none.
+		while self.pendingCounterOffers:
+			p, counter = self.pendingCounterOffers.pop(0)
+			if self.game.playerBankrupt[p] or self.game.playerBankrupt[counter.playerIds[1]]:
+				continue
+			self.game.globalInterface.Log("Player {} makes a counter-offer to player {}".format(p, counter.playerIds[1]))
+			self.ManageTrade(p, counter)
+
+	def ManageTrade(self, p, offer=None):
+		# Build and propose a trade. A counter-offer passes in the terms to start from.
 		game = self.game
-		others = [q for q in game.GetPlayersUnbankrupt() if q != p]
-		if not others:
-			return
-		buttons = [Button(self.names[q], q, colour=PLAYER_COLOURS[q][1]) for q in others] + [Button("Cancel", None, newRow=True, exit=True)]
-		partner = self.Choose(buttons, "Trade", ["Who does {} want to trade with?".format(self.names[p])])
-		if partner is None:
-			return
-		offer = game.NewTrade(p, partner)
+		if offer is None:
+			others = [q for q in game.GetPlayersUnbankrupt() if q != p]
+			if not others:
+				return
+			buttons = [Button(self.names[q], q, colour=PLAYER_COLOURS[q][1]) for q in others] + [Button("Cancel", None, newRow=True, exit=True)]
+			partner = self.Choose(buttons, "Trade", ["Who does {} want to trade with?".format(self.names[p])])
+			if partner is None:
+				return
+			offer = game.NewTrade(p, partner)
+			title = "Trade: {} and {}".format(self.names[p], self.names[partner])
+		else:
+			partner = offer.playerIds[1]
+			title = "Counter-offer: {} to {}".format(self.names[p], self.names[partner])
 		pages = [0, 0]
 		while True:
 			area = self.DialogArea()
@@ -882,7 +916,7 @@ class UI(object):
 				if problems:
 					self.Text(self.Pretty(problems[0]), (area.x, area.bottom - 16), 18, (180, 30, 30))
 
-			choice = self.Choose(buttons, "Trade: {} and {}".format(self.names[p], self.names[partner]), [], big=True, extraDraw=Columns)
+			choice = self.Choose(buttons, title, [], big=True, extraDraw=Columns)
 			if choice[0] == "cancel": return
 			if choice[0] == "page": pages[choice[1]] += choice[2]
 			if choice[0] == "space":
@@ -893,7 +927,10 @@ class UI(object):
 			if choice[0] == "cards": offer.jailCards[choice[1]] += choice[2]
 			if choice[0] == "propose":
 				accepted = game.ProposeTrade(offer)
-				self.Message("Trade accepted" if accepted else "Trade rejected", ["{} {} the trade.".format(self.names[partner], "accepted" if accepted else "rejected")])
+				countered = any(counter.playerIds[1] == p for q, counter in self.pendingCounterOffers)
+				result = "accepted" if accepted else ("rejected, with a counter-offer" if countered else "rejected")
+				self.Message("Trade " + result, ["{} {} the trade.".format(self.names[partner], result)])
+				self.ProcessCounterOffers()
 				return
 
 class PygameGlobalInterface(object):
@@ -996,7 +1033,13 @@ class PygameHumanInterface(PlayerInterface):
 	def ConsiderTrade(self, offer, gameState):
 		proposer = offer.playerIds[0]
 		lines = self.ui.Pretty(gameState.DescribeTrade(offer)).split("\n")
-		return self.ui.Confirm("{}: trade offer from {}".format(self.Name(), self.ui.names[proposer]), lines, "Accept", "Reject")
+		buttons = [Button("Accept", "accept"), Button("Reject", "reject", exit=True), Button("Counter-offer", "counter")]
+		choice = self.ui.Choose(buttons, "{}: trade offer from {}".format(self.Name(), self.ui.names[proposer]), lines)
+		if choice == "counter":
+			# Reject this offer, then (once the engine has finished with it) propose a fresh
+			# trade back, starting from its terms
+			self.ui.pendingCounterOffers.append((self.playerNum, gameState.CounterOffer(offer)))
+		return choice == "accept"
 
 	def GetBuildingDemand(self, buildingType, available, gameState):
 		amount = self.ui.AskAmount("{}: {} shortage".format(self.Name(), buildingType),

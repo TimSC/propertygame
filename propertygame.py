@@ -9,7 +9,7 @@ class PropertyGame(object):
 	and training AIs.
 	"""
 
-	def __init__(self, globalInterface, playerInterfaces, boardFile="property-board-us.txt"):
+	def __init__(self, globalInterface, playerInterfaces, boardFile="property-board-us.txt", rollForFirstPlayer=True):
 		data = json.load(open(boardFile, "rt"))
 		self.board = data['board']
 		self.communityCards = data['community_cards']
@@ -66,7 +66,36 @@ class PropertyGame(object):
 				elif ty == "jail":
 					self.boardJailSpaceId = spaceId
 
-		self.playerTurn = random.randint(0, self.numPlayers-1)
+		self.playerTurn = 0
+		if rollForFirstPlayer:
+			self.RollForFirstPlayer()
+
+	def RollForFirstPlayer(self, forceRolls=None):
+		# Each player rolls two dice and the highest total goes first. Players who tie for
+		# highest roll again. Play then passes in player order ("clockwise").
+		contenders = list(range(self.numPlayers))
+		rollCount = 0
+		while True:
+			totals = {}
+			for playerId in contenders:
+				if forceRolls is None:
+					dieRoll1 = random.randint(1,6)
+					dieRoll2 = random.randint(1,6)
+				else:
+					dieRoll1, dieRoll2 = forceRolls[rollCount]
+				rollCount += 1
+				totals[playerId] = dieRoll1 + dieRoll2
+				self.globalInterface.Log("Player {} rolled a {} and a {} to decide who goes first".format(playerId, dieRoll1, dieRoll2))
+
+			best = max(totals.values())
+			contenders = [playerId for playerId in contenders if totals[playerId] == best]
+			if len(contenders) == 1:
+				break
+			self.globalInterface.Log("{} tied on {}, so roll again".format(" and ".join("Player {}".format(playerId) for playerId in contenders), best))
+
+		self.playerTurn = contenders[0]
+		self.globalInterface.Log("Player {} goes first".format(self.playerTurn))
+		return self.playerTurn
 
 	def DoTurn(self, forceRolls=None):
 
@@ -1071,6 +1100,16 @@ class PropertyGame(object):
 
 	def NewTrade(self, proposerId, recipientId):
 		return TradeOffer(proposerId, recipientId)
+
+	def CounterOffer(self, offer):
+		# A counter-offer is a fresh trade from the recipient back to the proposer, starting
+		# from the original terms, for the recipient to change and propose. The original
+		# offer counts as rejected.
+		counter = TradeOffer(offer.playerIds[1], offer.playerIds[0])
+		counter.spaces = [list(offer.spaces[1]), list(offer.spaces[0])]
+		counter.money = [offer.money[1], offer.money[0]]
+		counter.jailCards = [offer.jailCards[1], offer.jailCards[0]]
+		return counter
 
 	def TradeableSpaces(self, playerId):
 		out = []
