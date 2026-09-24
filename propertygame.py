@@ -66,6 +66,13 @@ class PropertyGame(object):
 				elif ty == "jail":
 					self.boardJailSpaceId = spaceId
 
+		# Limits so trading can't stall the game. A "turn" here runs from one EndPlayerTurn
+		# to the next, which includes trading between turns.
+		self.maxTradeOffersPerTurn = 3
+		self.maxFreeTradingPasses = 20
+		self.tradeOffersThisTurn = [0] * self.numPlayers
+		self.rejectedTradesThisTurn = set()
+
 		self.playerTurn = 0
 		if rollForFirstPlayer:
 			self.RollForFirstPlayer()
@@ -532,6 +539,8 @@ class PropertyGame(object):
 		return highestBidder, highestBid, highestExtra
 
 	def EndPlayerTurn(self):
+		self.tradeOffersThisTurn = [0] * self.numPlayers
+		self.rejectedTradesThisTurn = set()
 		self.playerTurn += 1
 		if self.playerTurn >= self.numPlayers:
 			self.playerTurn = 0
@@ -719,9 +728,11 @@ class PropertyGame(object):
 				self.playerInterfaces[playerId].DoTrading(self)
 
 		else:
-			# All players are AIs
+			# All players are AIs. Stop after a limit, in case an AI never says it's finished.
 			complete = False
-			while not complete:
+			passes = 0
+			while not complete and passes < self.maxFreeTradingPasses:
+				passes += 1
 				complete = True
 				for playerId, pl in enumerate(self.playerInterfaces):
 					if self.playerBankrupt[playerId]: continue
@@ -1127,8 +1138,12 @@ class PropertyGame(object):
 				interest += self.MortgageInterest(spaceId)
 		return interest
 
-	def TradeProblems(self, offer):
-		# Returns a list of reasons the trade is not allowed (empty if allowed)
+	def TradeSignature(self, offer):
+		return (tuple(offer.playerIds), tuple(tuple(sorted(sp)) for sp in offer.spaces), tuple(offer.money), tuple(offer.jailCards))
+
+	def TradeProblems(self, offer, checkLimits=True):
+		# Returns a list of reasons the trade is not allowed (empty if allowed). checkLimits
+		# also applies the limits on proposing trades, which stop trading stalling the game.
 		reasons = []
 		proposerId, recipientId = offer.playerIds
 		if proposerId == recipientId:
@@ -1157,6 +1172,12 @@ class PropertyGame(object):
 			cashAfter = self.playerMoney[playerId] - offer.money[side] + offer.money[1 - side]
 			if cashAfter < self.TradeInterestDue(offer, side):
 				reasons.append("Player {} cannot afford this trade".format(playerId))
+
+		if checkLimits:
+			if self.tradeOffersThisTurn[proposerId] >= self.maxTradeOffersPerTurn:
+				reasons.append("Player {} has made {} trade offers this turn, the most allowed".format(proposerId, self.maxTradeOffersPerTurn))
+			if self.TradeSignature(offer) in self.rejectedTradesThisTurn:
+				reasons.append("This offer was already rejected this turn")
 		return reasons
 
 	def DescribeTrade(self, offer):
@@ -1174,8 +1195,10 @@ class PropertyGame(object):
 		reasons = self.TradeProblems(offer)
 		if len(reasons) > 0:
 			return False
+		self.tradeOffersThisTurn[offer.playerIds[0]] += 1
 		accepted = self.playerInterfaces[offer.playerIds[1]].ConsiderTrade(offer, self)
 		if not accepted:
+			self.rejectedTradesThisTurn.add(self.TradeSignature(offer))
 			self.globalInterface.Log("Player {} rejected a trade from player {}".format(offer.playerIds[1], offer.playerIds[0]))
 			return False
 		self.ProcessTrade(offer)
@@ -1183,7 +1206,7 @@ class PropertyGame(object):
 
 	def ProcessTrade(self, offer):
 
-		assert len(self.TradeProblems(offer)) == 0
+		assert len(self.TradeProblems(offer, checkLimits=False)) == 0
 		self.globalInterface.Log("Trade agreed:\n" + self.DescribeTrade(offer))
 
 		for side, playerId in enumerate(offer.playerIds):

@@ -1,6 +1,7 @@
 import random
 from propertygame import PropertyGame, GlobalInterface
 from interfaces import *
+from basicai import BasicAIInterface
 
 def SetCardPosition(deck, cardName, position):
 	
@@ -1440,7 +1441,7 @@ def CheckPlayerInterfaces():
 
 	# Every kind of player must implement every PlayerInterface method, with the same parameters
 	import inspect
-	for cls in [HumanInterface, RandomInterface, TestInterface]:
+	for cls in [HumanInterface, RandomInterface, BasicAIInterface, TestInterface]:
 		for name, method in inspect.getmembers(PlayerInterface, inspect.isfunction):
 			if name == "__init__": continue
 			implementation = getattr(cls, name)
@@ -1489,6 +1490,50 @@ def CheckCounterOffer():
 	if propertyGame.spaceOwners[39] != 1 or propertyGame.spaceOwners[37] != 0 or propertyGame.playerMoney != [1550, 1450, 1500]:
 		raise RuntimeError()
 
+def CheckTradeLimits():
+
+	playerInterfaces = [TestInterface(0), TestInterface(1), TestInterface(2)]
+	propertyGame = PropertyGame(GlobalInterface(), playerInterfaces, rollForFirstPlayer=False)
+	for spaceId in (1, 3, 6, 8):
+		propertyGame.spaceOwners[spaceId] = 0
+
+	def Offer(spaceId, money):
+		offer = propertyGame.NewTrade(0, 1)
+		offer.spaces[0] = [spaceId]
+		offer.money[1] = money
+		return offer
+
+	# A rejected offer can't be repeated this turn
+	if propertyGame.ProposeTrade(Offer(1, 50)):
+		raise RuntimeError()
+	if "This offer was already rejected this turn" not in propertyGame.TradeProblems(Offer(1, 50)):
+		raise RuntimeError()
+
+	# At most 3 offers per player per turn
+	propertyGame.ProposeTrade(Offer(3, 50))
+	propertyGame.ProposeTrade(Offer(6, 50))
+	if not any("most allowed" in r for r in propertyGame.TradeProblems(Offer(8, 50))):
+		raise RuntimeError()
+	if len(propertyGame.TradeProblems(propertyGame.NewTrade(1, 0))) != 1: # Other players are unaffected (only "empty")
+		raise RuntimeError()
+
+	# The limits reset when the turn ends, and an accepted trade within them goes through
+	propertyGame.EndPlayerTurn()
+	playerInterfaces[1].acceptTrade = True
+	if not propertyGame.ProposeTrade(Offer(1, 50)) or propertyGame.spaceOwners[1] != 1:
+		raise RuntimeError()
+
+	# An AI that never finishes trading can't stall the game
+	class NeverFinished(TestInterface):
+		calls = 0
+		def DoTrading(self, gameState):
+			NeverFinished.calls += 1
+			return False
+	propertyGame = PropertyGame(GlobalInterface(), [NeverFinished(0), TestInterface(1)], rollForFirstPlayer=False)
+	propertyGame.FreeTrading()
+	if NeverFinished.calls != propertyGame.maxFreeTradingPasses:
+		raise RuntimeError()
+
 def Test():
 
 	CheckBuildingCode()
@@ -1499,6 +1544,7 @@ def Test():
 	CheckPlayerInterfaces()
 	CheckFirstPlayer()
 	CheckCounterOffer()
+	CheckTradeLimits()
 
 if __name__=="__main__":
 	Test()

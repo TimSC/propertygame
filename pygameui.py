@@ -3,7 +3,7 @@ Pygame user interface for the property game.
 
 Run with:  venv/bin/python pygameui.py
 
-Choose 2-8 players and whether each is a human or the random AI. Humans
+Choose 2-8 players and whether each is a human, the basic AI or the random AI. Humans
 share the screen (hot seat), and every decision the engine needs is asked in a dialog.
 Games can be all AI, with the speed set from the side panel.
 """
@@ -12,6 +12,7 @@ import re
 import pygame
 from propertygame import PropertyGame
 from interfaces import PlayerInterface, RandomInterface
+from basicai import BasicAIInterface
 
 WINDOW = (1200, 800)
 BOARD_X, BOARD_Y, BOARD_SIZE = 10, 10, 780
@@ -36,6 +37,7 @@ PLAYER_COLOURS = [("Red", (220, 50, 50)), ("Blue", (50, 100, 230)), ("Green", (4
 	("Yellow", (235, 200, 20)), ("Purple", (150, 70, 200)), ("Orange", (245, 140, 30)),
 	("Cyan", (40, 190, 200)), ("Pink", (240, 110, 180))]
 SPEEDS = [("Slow", 700), ("Normal", 250), ("Fast", 40), ("Instant", 0)]
+PLAYER_KINDS = [("human", "Human"), ("basic", "Basic AI"), ("random", "Random AI")]
 BOARDS = [("US", "property-board-us.txt", "$")] # The setup screen offers a choice if there is more than one
 SHORT_NAMES = [(" Avenue", " Ave"), (" Street", " St"), (" Railroad", " RR"), (" Raiload", " RR"),
 	(" Station", " Stn"), (" Place", " Pl"), (" Company", " Co"), ("Community Chest", "Community Chest")]
@@ -68,6 +70,7 @@ class UI(object):
 		self.game = None
 		self.names = []
 		self.isHuman = []
+		self.kindLabels = []
 		self.currency = "$"
 		self.log = []
 		self.dice = None
@@ -395,7 +398,7 @@ class UI(object):
 			pygame.draw.rect(self.screen, HIGHLIGHT if p == game.playerTurn else GREY, card, 3 if p == game.playerTurn else 1, border_radius=6)
 			pygame.draw.circle(self.screen, PLAYER_COLOURS[p][1], (card.x + 18, card.centery), 11)
 			pygame.draw.circle(self.screen, BLACK, (card.x + 18, card.centery), 11, 1)
-			self.Text("{} ({})".format(self.names[p], "Human" if self.isHuman[p] else "AI"), (card.x + 36, card.y + 5), 22, GREY if bankrupt else BLACK)
+			self.Text("{} ({})".format(self.names[p], self.kindLabels[p]), (card.x + 36, card.y + 5), 22, GREY if bankrupt else BLACK)
 			self.Text(self.Money(game.playerMoney[p]), (card.right - 10, card.y + 5), 24, GREY if bankrupt else BLACK, right=True)
 			self.Text(self.PlayerSummary(p), (card.x + 36, card.y + cardHeight - 18), 16, DARK_GREY)
 			y += cardHeight + 4
@@ -633,7 +636,7 @@ class UI(object):
 
 	def Setup(self):
 		numPlayers = 3
-		kinds = [True] + [False] * 7
+		kinds = ["human"] + ["basic"] * 7
 		board = 0
 		while True:
 			buttons = []
@@ -642,8 +645,8 @@ class UI(object):
 			buttons.append(Button("+", ("players", 1), pygame.Rect(left + 320, top, 40, 36), enabled=numPlayers < 8))
 			for p in range(numPlayers):
 				y = top + 60 + p * 44
-				buttons.append(Button("Human", ("kind", p, True), pygame.Rect(left + 230, y, 100, 36), selected=kinds[p]))
-				buttons.append(Button("AI", ("kind", p, False), pygame.Rect(left + 340, y, 100, 36), selected=not kinds[p]))
+				for k, (kind, label) in enumerate(PLAYER_KINDS):
+					buttons.append(Button(label, ("kind", p, kind), pygame.Rect(left + 230 + k * 110, y, 100, 36), selected=(kinds[p] == kind)))
 			y = top + 60 + 8 * 44 + 10
 			speedY = y + 50 if len(BOARDS) > 1 else y
 			if len(BOARDS) > 1:
@@ -666,7 +669,7 @@ class UI(object):
 				if len(BOARDS) > 1:
 					self.Text("Board", (left, y + 8), 28, WHITE)
 				self.Text("AI speed", (left, speedY + 8), 28, WHITE)
-				if not any(kinds[:numPlayers]):
+				if "human" not in kinds[:numPlayers]:
 					self.Text("All players are AI: sit back and watch", (WINDOW[0] // 2, y + 180), 22, (200, 220, 200), centre=True)
 
 			choice = self.Choose(buttons, extraDraw=Labels)
@@ -680,8 +683,10 @@ class UI(object):
 	def Play(self, numPlayers, kinds, board):
 		label, boardFile, self.currency = BOARDS[board]
 		self.names = [PLAYER_COLOURS[p][0] for p in range(numPlayers)]
-		self.isHuman = list(kinds)
-		interfaces = [PygameHumanInterface(p, self) if kinds[p] else RandomInterface(p) for p in range(numPlayers)]
+		self.isHuman = [kind == "human" for kind in kinds]
+		self.kindLabels = [dict(PLAYER_KINDS)[kind] for kind in kinds]
+		makers = {"human": lambda p: PygameHumanInterface(p, self), "basic": BasicAIInterface, "random": RandomInterface}
+		interfaces = [makers[kinds[p]](p) for p in range(numPlayers)]
 		self.log = []
 		self.dice = None
 		self.statusText = None
