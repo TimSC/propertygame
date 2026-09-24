@@ -8,7 +8,7 @@
 - **Board:** UK (`property-board-uk.txt`) with the modern UK card decks. The flavour text on the cards is new, but they behave like the standard cards (see *Cards* below).
 - **Players:** three, numbered 1–3 in turn order. Player 3 rolled the 9 and starts. A dealer acts as banker and doesn't take turns.
 - **Starting money:** 1500 each. The replay confirms this: every balance matches.
-- **Dice:** where only a total was visible (rows 7, 10, 14, 30, 84), the replay uses a pair that isn't a double.
+- **Dice:** where only a total was visible (rows 7, 10, 14, 30, 83), the replay uses a pair that isn't a double.
 
 ## Game turns
 
@@ -70,7 +70,7 @@
 | 54 | 00:34:33 | 1 | 5,1 | 25 Fenchurch Street Station | Buys for 200 | |
 | 55 | 00:35:04 | 2 | 5,1 | 24 Trafalgar Square | Own property | |
 | 56 | 00:35:04 | 3 | 5,3 | 2 Community Chest | Passes Go (+200). "Blasting music late at night": go to jail | |
-| 57 | 00:35:14 | 3 | – | – | Buys 2 houses on orange (200), placed on 16 Bow Street and 19 Vine Street | Legal, but not the engine's choice, so the test moves one house marker by hand |
+| 57 | 00:35:14 | 3 | – | – | Buys 2 houses on orange (200), placed on 16 Bow Street and 19 Vine Street | The owner's choice; any even layout is legal |
 | 58 | 00:36:01 | 1 | 5,1 | 31 Regent Street | Can't afford 300, so it goes to auction | Deliberate rule deviation: no sale. Replay: nobody bids, and it stays unowned |
 | 59 | 00:37:53 | 2 | 2,4 | 30 Go To Jail | Goes to jail | |
 | 60 | 00:37:53 | 3 | 6,3 | 10 → 19 Vine Street | Uses Get Out of Jail Free; own property | The video uses the card when sent to jail. Under the rules it's used at the start of the next turn, which gives the same result. The card goes back to the Chance deck |
@@ -96,15 +96,15 @@
 | 80 | 00:54:34 | 1 | 5,2 | 2 Community Chest | Passes Go (+200). "Street party": 10 from each player | Birthday card |
 | 81 | 00:54:50 | 2 | 2,1 | 19 Vine Street | Pays player 3 rent of 220 | 2 houses in both the video and the replay |
 | 82 | 00:55:00 | 3 | – | – | Buys 4 more buildings on orange (400) | Video: 2 houses on Bow, then a hotel on Bow, then 1 house on Marlborough. A hotel needs 4 houses on every property in the group. Replay: Bow 2 / Marlborough 3 / Vine 3, and player 3 is **topped up by 83** because the replay's rents were lower. Player 3 forgets to take a turn. |
-| 84 | 00:57:10 | 1 | 7 | 9 Pentonville Road | Pays player 2 rent of 8 | |
-| 85 | 01:00:23 | 2 | 3,2 | 24 Trafalgar Square | Own property | |
-| 86 | 01:00:23 | 2 | – | – | Buys a third red house (150), placed on 21 Strand | |
-| 87 | 01:00:23 | 3 | 4,2 | 10 Just Visiting | | |
-| 88 | 01:00:23 | 1 | 6,4 | 19 Vine Street | Pays player 3 rent | (wrong rent due to invalid placement) Video: 2 houses, 220. Replay: 3 houses, **600**, with player 1 **topped up by 236** so they can pay |
-| 89 | 01:00:23 | 2 | 3,4 | 31 Regent Street | Eliminated | Deliberate rule deviation, player 2 eliminated. Replay: Regent Street is unowned and nobody bids, then player 2 goes bankrupt to the bank and their property goes unsold |
-| 90 | 01:04:12 | 3 | 6,1 | 17 Community Chest | "You helped a puppy": Get Out of Jail Free | |
-| 91 | 01:04:12 | 3 | – | – | Buys 2 more houses on orange (200) | (invalid placement) Video: both on Vine Street. Replay: Bow 3 / Marlborough 3 / Vine 4 |
-| 92 | 01:05:20 | 1 | 5,3 | 27 Coventry Street | Pays player 3 rent of 22 | Player 1 is **topped up by 22**, having been emptied at row 88. |
+| 83 | 00:57:10 | 1 | 7 | 9 Pentonville Road | Pays player 2 rent of 8 | |
+| 84 | 01:00:23 | 2 | 3,2 | 24 Trafalgar Square | Own property | |
+| 85 | 01:00:23 | 2 | – | – | Buys a third red house (150), placed on 21 Strand | |
+| 86 | 01:00:23 | 3 | 4,2 | 10 Just Visiting | | |
+| 87 | 01:00:23 | 1 | 6,4 | 19 Vine Street | Pays player 3 rent | (wrong rent due to invalid placement) Video: 2 houses, 220. Replay: 3 houses, **600**, with player 1 **topped up by 236** so they can pay |
+| 88 | 01:00:23 | 2 | 3,4 | 31 Regent Street | Eliminated | Deliberate rule deviation, player 2 eliminated. Replay: Regent Street is unowned and nobody bids, then player 2 goes bankrupt to the bank and their property goes unsold |
+| 89 | 01:04:12 | 3 | 6,1 | 17 Community Chest | "You helped a puppy": Get Out of Jail Free | |
+| 90 | 01:04:12 | 3 | – | – | Buys 2 more houses on orange (200) | (invalid placement) Video: both on Vine Street. Replay: Bow 3 / Marlborough 3 / Vine 4 |
+| 91 | 01:05:20 | 1 | 5,3 | 27 Coventry Street | Pays player 3 rent of 22 | Player 1 is **topped up by 22**, having been emptied at row 87. |
 
 ## Notes
 
@@ -119,11 +119,11 @@
 
 | Rows | Deviation | Replay |
 |---|---|---|
-| 73, 82, 91 | Uneven building on orange, including a hotel with too few houses | Legal placement, so orange rents differ (rows 78, 88) |
+| 73, 82, 90 | Uneven building on orange, including a hotel with too few houses | Legal placement, so orange rents differ (rows 78, 87) |
 | 75 | Third failed jail roll: pays but doesn't move | Forced: released without moving |
-| 83 | Player 3 misses a turn | Forced |
-| 82, 88, 92 | – | Cash top-ups of 83, 236 and 22, to keep players in the game after the orange rents diverge |
+| 82 | Player 3 misses a turn | Forced |
+| 82, 87, 91 | – | Cash top-ups of 83, 236 and 22, to keep players in the game after the orange rents diverge |
 
-**Engine issues this replay found:** `MortgageSpace` allowed a property to be mortgaged twice, which is now fixed. `BuildBuildings` can't take the owner's choice of placement within the even-building rule (row 57).
+**Engine issues this replay found (all fixed):** `MortgageSpace` allowed a property to be mortgaged twice. `BuildBuildings` couldn't take the owner's choice of placement within the even-building rule (row 57); it now takes an order of preference, for selling as well as building. A player short of cash was made to mortgage before being asked whether they wanted the property; they're now asked first (rows 58, 66 and 88 are declines: the players could have mortgaged, but didn't).
 
-**Cards seen:** Get Out of Jail Free (rows 8, 90); advance to Pall Mall (25), Mayfair (26) and Trafalgar Square (37); building loan matures (29); chairperson (42); go back 3 spaces (50); go to jail (56); speeding fine (62). Community Chest: bank error (27), income tax refund (39), advance to Go (41), birthday (80).
+**Cards seen:** Get Out of Jail Free (rows 8, 89); advance to Pall Mall (25), Mayfair (26) and Trafalgar Square (37); building loan matures (29); chairperson (42); go back 3 spaces (50); go to jail (56); speeding fine (62). Community Chest: bank error (27), income tax refund (39), advance to Go (41), birthday (80).

@@ -31,13 +31,106 @@ def IntegerQuestion(questionText):
 		break
 	return playerIn
 
-class HumanInterface(object):
+def PreferredSpacesQuestion(group):
+	# Within the even building rule, the owner chooses where buildings go.
+	# Returns a list of space numbers in order of preference, or None for the default.
+	while True:
+		answer = input("Order of preference for where buildings stand, as space numbers separated by commas (blank for default)? ")
+		if answer.strip() == "":
+			return None
+		try:
+			preferredSpaces = [int(x) for x in answer.split(",")]
+		except ValueError:
+			print ("Must be space numbers")
+			continue
+		if len(set(preferredSpaces)) != len(preferredSpaces) or any(x not in group for x in preferredSpaces):
+			print ("Must be spaces in this group, each listed once: {}".format(group))
+			continue
+		return preferredSpaces
+
+class PlayerInterface(object):
+
+	""" 
+	Decisions the game asks a player to make. Each kind of player (human, AI, scripted
+	test) subclasses this and implements every method. gameState is the PropertyGame.
+	Players are numbered from 0, and "space" means a board position (0 is Go).
+	"""
+
 	def __init__(self, playerNum):
 		self.playerNum = playerNum
 
 	def OptionToBuy(self, spaceId, gameState):
+		""" Landed on an unowned property. Return True to buy it at the printed price.
+		If the player is short of cash, TryRaiseMoney is called next. Declining (or failing
+		to raise the money) sends the property to auction. """
+		raise NotImplementedError()
+
+	def GetAuctionBid(self, spaceId, highestBid, highestBidder, gameState):
+		""" Open auction for a property. Return a bid higher than highestBid, or None to pass.
+		highestBidder is None before the first bid. Players are asked in turn and may bid
+		again later, even after passing. Winners who can't pay go bankrupt. """
+		raise NotImplementedError()
+
+	def UseGetOutOfJailCard(self, gameState):
+		""" In jail at the start of a turn, holding a get out of jail free card.
+		Return True to use it. """
+		raise NotImplementedError()
+
+	def PayJailFine(self, gameState):
+		""" In jail at the start of a turn, before rolling. Return True to pay the fine
+		and leave jail. """
+		raise NotImplementedError()
+
+	def TryRaiseMoney(self, moneyNeeded, gameState):
+		""" The player needs moneyNeeded but has less cash. Raise it by mortgaging, selling
+		buildings or trading (through gameState). Nothing is returned: the game checks the
+		player's cash afterwards, and a player who still can't pay a debt goes bankrupt. """
+		raise NotImplementedError()
+
+	def UnmortgageChoices(self, choices, gameState):
+		""" The player has received mortgaged properties (from a bankruptcy or trade) and must
+		pay 10% interest on each now. choices is a list of [spaceId, mortgaged, interest,
+		mortgagePlusInterest]; set mortgaged to False to also pay off that mortgage now.
+		Return the list. """
+		raise NotImplementedError()
+
+	def DoTrading(self, gameState):
+		""" Between turns: build, sell, mortgage, unmortgage or propose trades. Return True
+		when finished. When no player is human, the game keeps asking every player until
+		all of them return True. """
+		raise NotImplementedError()
+
+	def ShowTradePlayerSelect(self):
+		""" Return True if the game should ask (through the global interface) which player
+		wants to trade between turns, which is what human players need. """
+		raise NotImplementedError()
+
+	def ConsiderTrade(self, offer, gameState):
+		""" Another player proposes a TradeOffer (offer.playerIds[1] is this player).
+		Return True to accept it. """
+		raise NotImplementedError()
+
+	def GetBuildingDemand(self, buildingType, available, gameState):
+		""" There may be a building shortage. Return how many buildings of buildingType
+		('house' or 'hotel') this player wants to buy now, of the available ones. """
+		raise NotImplementedError()
+
+	def GetBuildingBid(self, buildingType, groupIds, highestBid, highestBidder, gameState):
+		""" Open auction for one building during a shortage. Return (groupId, bid) or
+		(groupId, bid, preferredSpaces) to bid, or None to pass. The group must be one of
+		groupIds, the bid more than highestBid, at least the group's building cost and no
+		more than the player's cash. preferredSpaces is an order of preference for where the
+		building goes, as in PropertyGame.SetNumBuildingsInGroup. """
+		raise NotImplementedError()
+
+class HumanInterface(PlayerInterface):
+
+	def OptionToBuy(self, spaceId, gameState):
 		space = gameState.board[spaceId]
 		questionText = "Player {}, would you like to buy {} for {}?".format(self.playerNum, space['name'], space['price'])
+		short = space['price'] - gameState.playerMoney[self.playerNum]
+		if short > 0:
+			questionText += " (you will need to raise {} by mortgaging or selling buildings)".format(short)
 		return TrueOrFalseQuestion(questionText)
 
 	def GetAuctionBid(self, spaceId, highestBid, highestBidder, gameState):
@@ -244,8 +337,7 @@ class HumanInterface(object):
 			print ("Group", groupId)
 			group = gameState.propertyGroup[groupId]
 			
-			freeHouses, freeHotels = gameState.GetFreeBuildings()
-			countHouses, countHotels = len(freeHouses), len(freeHotels)
+			countHouses, countHotels = gameState.GetFreeBuildings()
 
 			for spaceId in group:
 				space = gameState.board[spaceId]
@@ -257,7 +349,9 @@ class HumanInterface(object):
 			
 			if numBuildings == -1: break
 			if numBuildings < 0: continue
-			impossible, numAllowed, reasons, planCost = gameState.BuildBuildings(self.playerNum, groupId, numBuildings)
+
+			preferredSpaces = PreferredSpacesQuestion(group)
+			impossible, numAllowed, reasons, planCost = gameState.BuildBuildings(self.playerNum, groupId, numBuildings, preferredSpaces)
 			if impossible: print ("Not possible:", reasons)
 
 	def ShowTradePlayerSelect(self):
@@ -274,15 +368,15 @@ class HumanInterface(object):
 			print ("Group:", groupId, "minimum bid", space['building_costs'])
 		groupId = IntegerQuestion("Group to build on? (-1 to pass)")
 		if groupId == -1: return None
-		return groupId, IntegerQuestion("Bid?")
+		bid = IntegerQuestion("Bid?")
+		if groupId not in groupIds: return groupId, bid # Rejected by the game as an invalid group
+		return groupId, bid, PreferredSpacesQuestion(gameState.propertyGroup[groupId])
 
 	def ConsiderTrade(self, offer, gameState):
 		print (gameState.DescribeTrade(offer))
 		return TrueOrFalseQuestion("Player {}, do you accept this trade?".format(self.playerNum))
 
-class RandomInterface(object):
-	def __init__(self, playerNum):
-		self.playerNum = playerNum
+class RandomInterface(PlayerInterface):
 
 	def OptionToBuy(self, spaceId, gameState):
 		return random.randint(0, 1)
@@ -336,7 +430,9 @@ class RandomInterface(object):
 				groupId = random.choice(list(buildingsInGroup.keys()))
 				if buildingsInGroup[groupId] > 0:
 					# Sell some buildings
-					gameState.SetNumBuildingsInGroup(groupId, random.randint(0, buildingsInGroup[groupId]-1))
+					preferredSpaces = gameState.propertyGroup[groupId][:]
+					random.shuffle(preferredSpaces)
+					gameState.SetNumBuildingsInGroup(groupId, random.randint(0, buildingsInGroup[groupId]-1), preferredSpaces = preferredSpaces)
 					
 					newNumBuildings = gameState.NumHousesInGroup(groupId)[0]
 					buildingsInGroup[groupId] = newNumBuildings
@@ -410,7 +506,9 @@ class RandomInterface(object):
 				group = gameState.propertyGroup[groupId]
 				numBuildings = random.randint(0, 5 * len(group))
 
-				gameState.BuildBuildings(self.playerNum, groupId, numBuildings)
+				preferredSpaces = group[:]
+				random.shuffle(preferredSpaces)
+				gameState.BuildBuildings(self.playerNum, groupId, numBuildings, preferredSpaces)
 
 		elif cho == 2:
 
@@ -456,7 +554,9 @@ class RandomInterface(object):
 		lowest = max(highestBid + 1, cost)
 		highest = min(gameState.playerMoney[self.playerNum], 2 * cost)
 		if lowest > highest or not random.randint(0, 3): return None
-		return groupId, random.randint(lowest, min(highest, lowest + 20))
+		preferredSpaces = gameState.propertyGroup[groupId][:]
+		random.shuffle(preferredSpaces)
+		return groupId, random.randint(lowest, min(highest, lowest + 20)), preferredSpaces
 
 
 class GlobalInterface(object):
@@ -466,9 +566,9 @@ class GlobalInterface(object):
 	def GetPlayerIdToTrade(self):
 		return IntegerQuestion("Player ID wanting to trade (-1 to skip)?")
 
-class TestInterface(object):
+class TestInterface(PlayerInterface):
 	def __init__(self, playerNum):
-		self.playerNum = playerNum
+		super().__init__(playerNum)
 		self.Reset()
 
 	def Reset(self):
@@ -517,7 +617,7 @@ class TestInterface(object):
 		return self.buildingDemand
 
 	def GetBuildingBid(self, buildingType, groupIds, highestBid, highestBidder, gameState):
-		# buildingBid is (groupId, bid), made if it beats the current bid
+		# buildingBid is (groupId, bid) or (groupId, bid, preferredSpaces), made if it beats the current bid
 		if self.buildingBid is None: return None
 		if self.buildingBid[1] <= highestBid: return None
 		return self.buildingBid

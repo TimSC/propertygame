@@ -36,9 +36,9 @@ class PropertyGame(object):
 			self.playerBankrupt.append(False)
 		self.spaceOwners = []
 		self.spaceMortgaged = []
-		self.boardHouses = []
-		self.boardHotels = []
-		self.boardGroupBuildOrder = {}
+		self.spaceBuildings = [] # Buildings on each space: 0-4 houses, 5 means a hotel
+		self.housesInBank = self.houseMarkers
+		self.hotelsInBank = self.hotelMarkers
 		self.boardStations = []
 		self.boardUtilities = []
 		self.boardJailSpaceId = None
@@ -48,6 +48,7 @@ class PropertyGame(object):
 		for spaceId, space in enumerate(self.board):
 			self.spaceOwners.append(None)
 			self.spaceMortgaged.append(False)
+			self.spaceBuildings.append(0)
 			if 'type' in space:
 				ty = space['type']
 				if ty == "station":
@@ -61,16 +62,9 @@ class PropertyGame(object):
 					else:
 						self.propertyGroup[inGroup] = [spaceId]
 					self.propertyInGroup[spaceId] = inGroup
-					if inGroup not in self.boardGroupBuildOrder:
-						self.boardGroupBuildOrder[inGroup] = []
 
 				elif ty == "jail":
 					self.boardJailSpaceId = spaceId
-
-		for i in range(self.houseMarkers):
-			self.boardHouses.append(None)
-		for i in range(self.hotelMarkers):
-			self.boardHotels.append(None)
 
 		self.playerTurn = random.randint(0, self.numPlayers-1)
 
@@ -84,10 +78,7 @@ class PropertyGame(object):
 			if response:
 				self.globalInterface.Log("Player {} used their get out of jail card".format(self.playerTurn))
 				goojc = self.playerGetOutOfJailCards[self.playerTurn].pop()
-				if goojc['deck'] == 'chance': # Add card to bottom of appropriate deck
-					self.chanceCards.append(goojc)
-				else:
-					self.communityCards.append(goojc)
+				self.ReturnCardToDeck(goojc, goojc['deck'])
 				self.ReleaseFromJail(self.playerTurn)
 
 		if self.playerTimeInJail[self.playerTurn] is not None:
@@ -229,15 +220,19 @@ class PropertyGame(object):
 		else:
 			# Not owned
 			accepted = False
+			price = destinationSpace['price']
 
-			if self.playerMoney[playerId] < destinationSpace['price'] and self.PlayerMaxMoneyThatCanBeRaised(playerId) >= destinationSpace['price']:
-				# A player is allowed to mortgage and sell houses here to raise cash
-				self.globalInterface.Log("Player {} cannot automatically afford {} but could raise the cash".format(playerId, destinationSpace['name']))
-				self.PlayerTryRaiseMoney(playerId, destinationSpace['price'])
-
-			if self.playerMoney[playerId] >= destinationSpace['price']:
-				# Allow a player to purpose the property at full price
+			if self.playerMoney[playerId] >= price or self.PlayerMaxMoneyThatCanBeRaised(playerId) >= price:
+				# Offer the property at full price. Only if the player wants it do they
+				# have to raise any cash they are short (by mortgaging or selling buildings).
 				accepted = self.playerInterfaces[playerId].OptionToBuy(destinationSpaceId, self)
+
+				if accepted and self.playerMoney[playerId] < price:
+					self.globalInterface.Log("Player {} needs to raise cash to buy {}".format(playerId, destinationSpace['name']))
+					self.PlayerTryRaiseMoney(playerId, price)
+					if self.playerMoney[playerId] < price:
+						self.globalInterface.Log("Player {} did not raise enough to buy {}".format(playerId, destinationSpace['name']))
+						accepted = False
 			else:
 				self.globalInterface.Log("Player {} cannot afford {}".format(playerId, destinationSpace['name']))
 
@@ -325,21 +320,17 @@ class PropertyGame(object):
 
 		if 'pay_per_house' in drawCard:
 			count = 0
-			for spaceId in self.boardHouses:
-				if spaceId is None: continue
-				ownerId = self.spaceOwners[spaceId]
-				if ownerId == playerId:
-					count += 1
+			for spaceId, buildings in enumerate(self.spaceBuildings):
+				if self.spaceOwners[spaceId] == playerId and buildings < 5:
+					count += buildings
 
 			bankrupted = self.EnsurePlayment(playerId, count * drawCard['pay_per_house'], 'bank')
 			if bankrupted: turnEnded = True
 
 		if 'pay_per_hotel' in drawCard:
 			count = 0
-			for spaceId in self.boardHotels:
-				if spaceId is None: continue
-				ownerId = self.spaceOwners[spaceId]
-				if ownerId == playerId:
+			for spaceId, buildings in enumerate(self.spaceBuildings):
+				if self.spaceOwners[spaceId] == playerId and buildings == 5:
 					count += 1
 
 			bankrupted = self.EnsurePlayment(playerId, count * drawCard['pay_per_hotel'], 'bank')
@@ -357,14 +348,17 @@ class PropertyGame(object):
 			# Player keeps this card
 			self.playerGetOutOfJailCards[playerId].append(drawCard)
 		else:
-			# Add card to bottom of deck
-			if deck == 'chance':
-				self.chanceCards.append(drawCard)
-			else:
-				self.communityCards.append(drawCard)
+			self.ReturnCardToDeck(drawCard, deck)
 
 		return turnEnded
 
+
+	def ReturnCardToDeck(self, card, deck):
+		# Cards go to the bottom of their deck ('chance' or 'community')
+		if deck == 'chance':
+			self.chanceCards.append(card)
+		else:
+			self.communityCards.append(card)
 
 	def PlanMove(self, playerId, move):
 
@@ -609,17 +603,9 @@ class PropertyGame(object):
 				self.SetNumBuildingsInGroup(propGroupId, 0)
 
 		# Check all buildings have been returned
-		for i, hs in enumerate(self.boardHotels):
-			if hs is None: continue
-			owner = self.spaceOwners[hs]
-			if owner != playerOwingId: continue
-			assert self.boardHotels[i] is None
-
-		for i, hs in enumerate(self.boardHouses):
-			if hs is None: continue
-			owner = self.spaceOwners[hs]
-			if owner != playerOwingId: continue
-			assert self.boardHouses[i] is None
+		for spaceId, owner in enumerate(self.spaceOwners):
+			if owner == playerOwingId:
+				assert self.spaceBuildings[spaceId] == 0
 
 		# Transfer all cash
 		if playerOwedId != 'bank':
@@ -631,12 +617,9 @@ class PropertyGame(object):
 		if playerOwedId != 'bank':
 			self.playerGetOutOfJailCards[playerOwedId].extend(self.playerGetOutOfJailCards[playerOwingId])
 		else:
-			# Bank takes them, so return them to the bottom of their decks
+			# Bank takes them, so return them to their decks
 			for goojc in self.playerGetOutOfJailCards[playerOwingId]:
-				if goojc['deck'] == 'chance':
-					self.chanceCards.append(goojc)
-				else:
-					self.communityCards.append(goojc)
+				self.ReturnCardToDeck(goojc, goojc['deck'])
 		self.playerGetOutOfJailCards[playerOwingId] = []
 
 		# Transfer all property to owed player
@@ -655,10 +638,7 @@ class PropertyGame(object):
 					self.spaceOwners[spaceId] = None
 					self.spaceMortgaged[spaceId] = False
 					toauction.append(spaceId)
-		
-		for groupId in self.propertyGroup:
-			existingHouses, groupHouses = self.NumHousesInGroup(groupId)
-			assert existingHouses == len(self.boardGroupBuildOrder[groupId])
+
 
 		if playerOwedId != 'bank':
 
@@ -794,241 +774,146 @@ class PropertyGame(object):
 		return existingHouses, groupHouses
 
 	def NumHousesOnSpace(self, spaceId):
-		countHouses = 0
-		for si in self.boardHouses:
-			if si == spaceId:
-				countHouses += 1
-
-		countHotels = 0
-		for si in self.boardHotels:
-			if si == spaceId:
-				countHotels += 1
-				
-		assert countHouses == 0 or countHotels == 0
-		assert countHouses >= 0 and countHouses <= 4
-		assert countHotels >= 0 and countHotels <= 1
-
-		if countHotels: return 5
-		return countHouses
+		# 0-4 houses, or 5 for a hotel
+		return self.spaceBuildings[spaceId]
 
 	def GetFreeBuildings(self):
-		freeHouses = []
-		for i, si in enumerate(self.boardHouses):
-			if si is None:
-				freeHouses.append(i)
+		# Number of houses and hotels left in the bank
+		return self.housesInBank, self.hotelsInBank
 
-		freeHotels = []
-		for i, si in enumerate(self.boardHotels):
-			if si is None:
-				freeHotels.append(i)
-
-		return freeHouses, freeHotels
+	def CheckBuildingTotals(self):
+		housesOnBoard = sum([b for b in self.spaceBuildings if b < 5])
+		hotelsOnBoard = len([b for b in self.spaceBuildings if b == 5])
+		assert housesOnBoard + self.housesInBank == self.houseMarkers
+		assert hotelsOnBoard + self.hotelsInBank == self.hotelMarkers
 
 	# Buying and selling houses and hotels
-	def SetNumBuildingsInGroup(self, groupId, numBuildings, planOnly = False, applyPayment = True):
-		
+	def SetNumBuildingsInGroup(self, groupId, numBuildings, planOnly = False, applyPayment = True, preferredSpaces = None):
+		# Changes the number of buildings on a colour group to numBuildings (a hotel counts
+		# as 5), one building at a time, keeping the group even.
+		# Returns (impossible, numAllowed, reasons, planCost). If the change is impossible, or
+		# planOnly is set, numAllowed is how many buildings could be added or removed and
+		# planCost is what that would cost (negative for a sale). Otherwise nothing is
+		# planned: the change is made, numAllowed is None and planCost is 0.
+		#
+		# preferredSpaces is the owner's order of preference for where buildings stand
+		# (any spaces in the group not listed come after, in the default order). Within the
+		# even building rule, new buildings go on the most preferred property among those
+		# with the fewest, and buildings are sold from the least preferred among those with
+		# the most. By default, buildings go on the most expensive properties first and are
+		# sold from the least expensive first.
+
 		assert self.IsGroupAllUnmortgaged(groupId)
-		assert self.GetGroupOwner(groupId) is not None
-		group = self.propertyGroup[groupId]
-		assert numBuildings >= 0
-
 		groupOwner = self.GetGroupOwner(groupId)
-		availableMoney = self.playerMoney[groupOwner]
+		assert groupOwner is not None
+		assert numBuildings >= 0
+		group = self.propertyGroup[groupId]
 
-		freeHouses, freeHotels = self.GetFreeBuildings()
-		
-		existingHouses, groupHouses = self.NumHousesInGroup(groupId)
-		assert existingHouses == len(self.boardGroupBuildOrder[groupId])
+		defaultOrder = sorted(group, key = lambda spaceId: -spaceId) # Expensive properties first
+		if preferredSpaces is None:
+			preferenceOrder = defaultOrder
+		else:
+			assert len(set(preferredSpaces)) == len(preferredSpaces)
+			for spaceId in preferredSpaces:
+				assert spaceId in group
+			preferenceOrder = list(preferredSpaces) + [spaceId for spaceId in defaultOrder if spaceId not in preferredSpaces]
+		priority = {spaceId: i for i, spaceId in enumerate(preferenceOrder)}
 
-		groupHouses.sort(key = lambda x: (x[1], -x[0]))	# Put houses on expensive properties first
+		counts = {spaceId: self.spaceBuildings[spaceId] for spaceId in group}
+		existing = sum(counts.values())
+		housesInBank, hotelsInBank = self.housesInBank, self.hotelsInBank
+		cost = 0 # Paid to the bank, negative when selling
+		changed = 0
 		impossible = False
 		reasons = []
 
-		if numBuildings == existingHouses:
-			return False, None, reasons, 0 #No change
+		if numBuildings == existing:
+			return False, None, reasons, 0
 
-		elif numBuildings > existingHouses:
-			# Increase wanted
+		elif numBuildings == 0:
+			# Total liquidation. "All houses on one color-group may be sold at once, or they may
+			# be sold one house at a time (one hotel equals five houses)". Selling a hotel
+			# outright needs no houses from the bank, so this cannot fail.
+			for spaceId in group:
+				cost -= counts[spaceId] * self.board[spaceId]['building_costs'] // 2
+				if counts[spaceId] == 5:
+					hotelsInBank += 1
+				else:
+					housesInBank += counts[spaceId]
+				counts[spaceId] = 0
+			changed = existing
 
-			# Plan addition checking limits at each stage
-			cursor = 0
-			planAddHouseId = []
-			planAddHotelId = []
-			planAddSpaceId = []
-			planAddCost = 0
+		elif numBuildings > existing:
+			for i in range(numBuildings - existing):
+				# Build on the most preferred of the properties with the fewest buildings
+				spaceId = min(group, key = lambda s: (counts[s], priority[s]))
+				buildingCost = self.board[spaceId]['building_costs']
 
-			for i in range(numBuildings - existingHouses):
-				# Plan adding a single building
-
-				space = self.board[groupHouses[cursor][0]]
-
-				if groupHouses[cursor][1] >= 5:
+				if counts[spaceId] >= 5:
 					reasons.append("Too many buildings")
 					impossible = True
 					break
-
-				singleBuildingCost = space['building_costs']
-				newCost = planAddCost + singleBuildingCost
-				if applyPayment and newCost > availableMoney:
+				if applyPayment and cost + buildingCost > self.playerMoney[groupOwner]:
 					reasons.append("Cost is too high")
 					impossible = True
 					break
-
-				if groupHouses[cursor][1] <= 3:
-					if len(freeHouses) == 0:
+				if counts[spaceId] < 4:
+					if housesInBank == 0:
 						reasons.append("Ran out of house markers")
 						impossible = True
 						break
-					planAddHouseId.append(freeHouses.pop())
-					planAddHotelId.append(None)
+					housesInBank -= 1
 				else:
-					if len(freeHotels) == 0:
+					if hotelsInBank == 0:
 						reasons.append("Ran out of hotel markers")
 						impossible = True
 						break
-					planAddHouseId.append(None)
-					planAddHotelId.append(freeHotels.pop())
+					hotelsInBank -= 1
+					housesInBank += 4 # The hotel replaces 4 houses, which go back to the bank
 
-				planAddCost = newCost
-				planAddSpaceId.append(groupHouses[cursor][0])
-				groupHouses[cursor][1] += 1
-
-				cursor += 1
-				if cursor >= len(groupHouses):
-					cursor = 0
-			
-			if impossible or planOnly:
-				return impossible, len(planAddSpaceId), reasons, planAddCost
-
-			# Execute plan to board
-			for houseId, hotelId, spaceId in zip(planAddHouseId, planAddHotelId, planAddSpaceId):
-				if houseId is not None:
-					self.boardHouses[houseId] = spaceId					
-				else:
-					# Remove 4 houses and replace with hotel
-					for hi, si in enumerate(self.boardHouses):
-						if si == spaceId: self.boardHouses[hi] = None
-					self.boardHotels[hotelId] = spaceId
-				self.boardGroupBuildOrder[groupId].append(spaceId)
-
-			if applyPayment:
-				bankrupted = self.EnsurePlayment(groupOwner, planAddCost, 'bank')
-				assert not bankrupted # Checks above should block bankruptcy
-			
-			existingHouses2, groupHouses2 = self.NumHousesInGroup(groupId)
-			assert existingHouses2 == len(self.boardGroupBuildOrder[groupId])
-			assert existingHouses2 == numBuildings
-			diffHouses = max([g[1] for g in groupHouses2]) - min([g[1] for g in groupHouses2])
-			assert diffHouses <= 1 # Add houses as evenly as possible
-			return impossible, None, reasons, 0
+				counts[spaceId] += 1
+				cost += buildingCost
+				changed += 1
 
 		else:
+			for i in range(existing - numBuildings):
+				# Sell from the least preferred of the properties with the most buildings
+				spaceId = max(group, key = lambda s: (counts[s], priority[s]))
 
-			if numBuildings > 0:
+				if counts[spaceId] == 5:
+					# Breaking down a hotel needs 4 houses from the bank. What if we run out?
+					# https://boardgames.stackexchange.com/questions/925/what-happens-when-you-need-to-tear-down-a-hotel-but-no-houses-are-in-the-bank-in
+					# Approach used is to forbid the sale.
+					if housesInBank < 4:
+						reasons.append("Insufficient houses available to replace hotel")
+						impossible = True
+						break
+					housesInBank -= 4
+					hotelsInBank += 1
+				else:
+					housesInBank += 1
 
-				# Plan removal of buildings individually
-				planHouseCount = {}
-				for spaceId, buildCount in groupHouses:
-					planHouseCount[spaceId] = buildCount
-				planRemoveCount = 0
-				planRemoveCost = 0
-				planningFreeHouses = freeHouses[:]
+				counts[spaceId] -= 1
+				cost -= self.board[spaceId]['building_costs'] // 2
+				changed += 1
 
-				for i in range(existingHouses-numBuildings):
+		if impossible or planOnly:
+			return impossible, changed, reasons, cost
 
-					# Plan removal of a single building
-					spaceId = self.boardGroupBuildOrder[groupId][-i-1]
-					space = self.board[spaceId]
+		assert max(counts.values()) - min(counts.values()) <= 1 # Group is even
+		for spaceId in group:
+			self.spaceBuildings[spaceId] = counts[spaceId]
+		self.housesInBank, self.hotelsInBank = housesInBank, hotelsInBank
+		self.CheckBuildingTotals()
 
-					if planHouseCount[spaceId] >= 5:
-
-						# Add houses
-						# What if we run out?
-						# https://boardgames.stackexchange.com/questions/925/what-happens-when-you-need-to-tear-down-a-hotel-but-no-houses-are-in-the-bank-in
-						# Approach used is to forhid sale of hotel
-						if len(planningFreeHouses) < 4:
-							# Forbid sale if we ran out
-							reasons.append(["Insufficient houses available to replace hotel"])
-							return True, planRemoveCount, reasons, planRemoveCost
-						else:
-							for j in range(4):
-								planningFreeHouses.pop()
-
-					planHouseCount[spaceId] -= 1
-					planRemoveCount += 1
-					planRemoveCost -= space['building_costs'] // 2
-
-				if planOnly:
-					return impossible, planRemoveCount, reasons, planRemoveCost
-
-				# Execute the removal plan
-				houseCount = {}
-				sell = 0
-				for spaceId, buildCount in groupHouses:
-					houseCount[spaceId] = buildCount
-				for i in range(planRemoveCount):
-
-					spaceId = self.boardGroupBuildOrder[groupId].pop(-1)
-					space = self.board[spaceId]
-
-					if houseCount[spaceId] >= 5:
-						# Remove hotel
-						ind = self.boardHotels.index(spaceId)
-						self.boardHotels[ind] = None
-				
-						# Add 4 houses
-						for j in range(4):
-							self.boardHouses[freeHouses.pop()] = spaceId
-
-					else:
-						ind = self.boardHouses.index(spaceId)
-						self.boardHouses[ind] = None
-
-
-					sell += space['building_costs'] // 2
-					houseCount[spaceId] -= 1
-
-				if applyPayment:
-					self.playerMoney[groupOwner] += sell
-
+		if applyPayment:
+			if cost > 0:
+				bankrupted = self.EnsurePlayment(groupOwner, cost, 'bank')
+				assert not bankrupted # Checked above
 			else:
-				# Total liquidation
+				self.playerMoney[groupOwner] -= cost
 
-				# Allow hotel to be sold for the cost of 5 houses if sold entirely
-				# "All houses on one color-group may be sold at once, or they may 
-				# be sold one house at a time (one hotel equals five houses)..."
-
-				# This cannot fail as house models are not required, so no planning needed
-				if planOnly:
-					planRemoveCost = 0
-					for spaceId, buildCount in groupHouses:
-						planRemoveCost -= buildCount * self.board[spaceId]['building_costs'] // 2
-					return impossible, existingHouses, reasons, planRemoveCost
-
-				sell = 0
-				for spaceId in self.boardGroupBuildOrder[groupId]:
-					space = self.board[spaceId]
-
-					for hi, hs in enumerate(self.boardHotels):
-						if hs == spaceId: 
-							self.boardHotels[hi] = None
-							sell += 5 * space['building_costs'] // 2
-					for hi, hs in enumerate(self.boardHouses):
-						if hs == spaceId: 
-							self.boardHouses[hi] = None
-							sell += space['building_costs'] // 2
-
-				if applyPayment:
-					self.playerMoney[groupOwner] += sell
-
-				self.boardGroupBuildOrder[groupId] = []
-
-		existingHouses2, groupHouses2 = self.NumHousesInGroup(groupId)
-		assert existingHouses2 == len(self.boardGroupBuildOrder[groupId])
-		diffHouses = max([g[1] for g in groupHouses2]) - min([g[1] for g in groupHouses2])
-		assert diffHouses <= 1 # Add houses as evenly as possible
-
-		return impossible, None, reasons, 0
+		return False, None, reasons, 0
 
 	def NextBuildingType(self, groupId):
 		# Building evenly means every house in a group comes before any hotel
@@ -1073,9 +958,10 @@ class PropertyGame(object):
 					capacity += 1
 		return capacity
 
-	def BuildBuildings(self, playerId, groupId, numBuildings):
+	def BuildBuildings(self, playerId, groupId, numBuildings, preferredSpaces = None):
 		# Player purchases and sales of buildings should go through this rather than
 		# SetNumBuildingsInGroup, so the building shortage rule is applied.
+		# See SetNumBuildingsInGroup for preferredSpaces.
 		assert self.GetGroupOwner(groupId) == playerId
 		existingHouses = self.NumHousesInGroup(groupId)[0]
 
@@ -1083,18 +969,18 @@ class PropertyGame(object):
 			housesNeeded, hotelsNeeded = self.BuildingsNeeded(groupId, numBuildings)
 			if housesNeeded > 0:
 				freeHouses, freeHotels = self.GetFreeBuildings()
-				self.ResolveBuildingShortage(playerId, 'house', housesNeeded, len(freeHouses))
+				self.ResolveBuildingShortage(playerId, 'house', housesNeeded, freeHouses)
 
 			# Only compete for hotels if the houses needed to reach them are now available
 			housesNeeded, hotelsNeeded = self.BuildingsNeeded(groupId, numBuildings)
 			freeHouses, freeHotels = self.GetFreeBuildings()
-			if hotelsNeeded > 0 and housesNeeded <= len(freeHouses):
-				self.ResolveBuildingShortage(playerId, 'hotel', hotelsNeeded, len(freeHotels))
+			if hotelsNeeded > 0 and housesNeeded <= freeHouses:
+				self.ResolveBuildingShortage(playerId, 'hotel', hotelsNeeded, freeHotels)
 
 			if self.NumHousesInGroup(groupId)[0] >= numBuildings:
 				return False, None, [], 0 # Already reached by buildings won at auction
 
-		return self.SetNumBuildingsInGroup(groupId, numBuildings)
+		return self.SetNumBuildingsInGroup(groupId, numBuildings, preferredSpaces = preferredSpaces)
 
 	def ResolveBuildingShortage(self, requesterId, buildingType, needed, available):
 
@@ -1127,7 +1013,7 @@ class PropertyGame(object):
 		while True:
 			freeHouses, freeHotels = self.GetFreeBuildings()
 			free = freeHouses if buildingType == 'house' else freeHotels
-			if len(free) == 0: break
+			if free == 0: break
 
 			bidderIds = []
 			for plId in self.GetBiddersInTurnOrder(requesterId):
@@ -1140,21 +1026,28 @@ class PropertyGame(object):
 
 			def AskBid(plId, highestBid, highestBidder):
 				groups = self.GetBuildableGroups(plId, buildingType)
+				# A bid is (groupId, amount), optionally followed by the bidder's order of
+				# preference for where the building goes (see SetNumBuildingsInGroup)
 				bid = self.playerInterfaces[plId].GetBuildingBid(buildingType, groups, highestBid, highestBidder, self)
 				if bid is None: return None
 				bidGroupId, amount = bid[0], int(bid[1])
+				preferredSpaces = bid[2] if len(bid) > 2 else None
 				if bidGroupId not in groups: return None
-				cost = self.board[self.propertyGroup[bidGroupId][0]]['building_costs']
+				group = self.propertyGroup[bidGroupId]
+				if preferredSpaces is not None and (len(set(preferredSpaces)) != len(preferredSpaces) or any(s not in group for s in preferredSpaces)):
+					return None
+				cost = self.board[group[0]]['building_costs']
 				if amount < cost or amount > self.playerMoney[plId]: return None
-				return amount, bidGroupId
+				return amount, (bidGroupId, preferredSpaces)
 
 			self.globalInterface.Log("Auction started for a {}".format(buildingType))
-			winnerId, price, winGroupId = self.OpenAuction(bidderIds, AskBid)
+			winnerId, price, winningBid = self.OpenAuction(bidderIds, AskBid)
 			if winnerId is None:
 				break # Nobody bid, so remaining buildings sell at the normal price
+			winGroupId, winPreferredSpaces = winningBid
 
 			existing = self.NumHousesInGroup(winGroupId)[0]
-			impossible, numAllowed, reasons, planCost = self.SetNumBuildingsInGroup(winGroupId, existing + 1, applyPayment = False)
+			impossible, numAllowed, reasons, planCost = self.SetNumBuildingsInGroup(winGroupId, existing + 1, applyPayment = False, preferredSpaces = winPreferredSpaces)
 			assert not impossible
 			bankrupted = self.EnsurePlayment(winnerId, price, 'bank')
 			assert not bankrupted # Bids are limited to cash in hand

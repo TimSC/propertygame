@@ -23,6 +23,10 @@
             "building_costs": 50
         },
         {
+            "name": "Community Chest",
+            "type": "community"
+        },
+        {
             "name": "Baltic Avenue",
             "type": "property",
             "price": 60,
@@ -38,10 +42,6 @@
             "monopoly_rent": 8,
             "mortgage": 30,
             "building_costs": 50
-        },
-        {
-            "name": "Community Chest",
-            "type": "community"
         },
         {
             "name": "Income Tax",

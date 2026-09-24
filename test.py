@@ -25,8 +25,8 @@ def CheckBuildingCode():
 	propertyGame = PropertyGame(globalInterface, playerInterfaces)
 	assert propertyGame.GetGroupOwner(groupId) is None
 	freeHouses, freeHotels = propertyGame.GetFreeBuildings()
-	assert len(freeHouses) == propertyGame.houseMarkers
-	assert len(freeHotels) == propertyGame.hotelMarkers
+	assert freeHouses == propertyGame.houseMarkers
+	assert freeHotels == propertyGame.hotelMarkers
 
 	numSpacesInGroup = len(propertyGame.propertyGroup[groupId])
 	fullHousesNeeded = 4 * numSpacesInGroup
@@ -56,11 +56,11 @@ def CheckBuildingCode():
 		assert propertyGame.playerMoney[ownerId] == 1500 - expectedCost
 
 		if numBuildings <= fullHousesNeeded:
-			assert len(freeHouses) == propertyGame.houseMarkers-numBuildings
-			assert len(freeHotels) == propertyGame.hotelMarkers
+			assert freeHouses == propertyGame.houseMarkers-numBuildings
+			assert freeHotels == propertyGame.hotelMarkers
 		if numBuildings == fullBuildingsNeeded:
-			assert len(freeHouses) == propertyGame.houseMarkers
-			assert len(freeHotels) == propertyGame.hotelMarkers-numSpacesInGroup
+			assert freeHouses == propertyGame.houseMarkers
+			assert freeHotels == propertyGame.hotelMarkers-numSpacesInGroup
 
 	# Build n houses on partly improved group
 	groupId = 4
@@ -79,8 +79,8 @@ def CheckBuildingCode():
 
 		for i in range(existingBuildings): #Add buildings
 			spaceId = propertyGame.propertyGroup[groupId][i % numSpacesInGroup]
-			propertyGame.boardHouses[i] = spaceId
-			propertyGame.boardGroupBuildOrder[groupId].append(spaceId)
+			propertyGame.spaceBuildings[spaceId] += 1
+			propertyGame.housesInBank -= 1
 
 		impossible, numAllowed, reasons, planCost = propertyGame.SetNumBuildingsInGroup(groupId, numBuildings)
 		assert not impossible
@@ -93,8 +93,8 @@ def CheckBuildingCode():
 		assert diffHouses <= 1 # Add houses as evenly as possible
 
 		if numBuildings <= 12:
-			assert len(freeHouses) == propertyGame.houseMarkers-numBuildings
-			assert len(freeHotels) == propertyGame.hotelMarkers
+			assert freeHouses == propertyGame.houseMarkers-numBuildings
+			assert freeHotels == propertyGame.hotelMarkers
 
 	# Try build too much
 	groupId = 4
@@ -115,8 +115,8 @@ def CheckBuildingCode():
 		
 		for i in range(existingBuildings):
 			spaceId = propertyGame.propertyGroup[groupId][i % numSpacesInGroup]
-			propertyGame.boardHouses[i] = spaceId
-			propertyGame.boardGroupBuildOrder[groupId].append(spaceId)
+			propertyGame.spaceBuildings[spaceId] += 1
+			propertyGame.housesInBank -= 1
 
 		impossible, numAllowed, reasons, planCost = propertyGame.SetNumBuildingsInGroup(groupId, numBuildings)
 		assert impossible
@@ -126,8 +126,8 @@ def CheckBuildingCode():
 		assert existingHouses == existingBuildings
 		freeHouses, freeHotels = propertyGame.GetFreeBuildings()
 
-		assert len(freeHouses) == propertyGame.houseMarkers-existingBuildings
-		assert len(freeHotels) == propertyGame.hotelMarkers
+		assert freeHouses == propertyGame.houseMarkers-existingBuildings
+		assert freeHotels == propertyGame.hotelMarkers
 
 	# Try build too expensive
 	groupId = 5
@@ -148,8 +148,8 @@ def CheckBuildingCode():
 		
 		for i in range(existingBuildings):
 			spaceId = propertyGame.propertyGroup[groupId][i % numSpacesInGroup]
-			propertyGame.boardHouses[i] = spaceId
-			propertyGame.boardGroupBuildOrder[groupId].append(spaceId)
+			propertyGame.spaceBuildings[spaceId] += 1
+			propertyGame.housesInBank -= 1
 
 		impossible, numAllowed, reasons, planCost = propertyGame.SetNumBuildingsInGroup(groupId, numBuildings)
 		assert impossible
@@ -159,8 +159,8 @@ def CheckBuildingCode():
 		assert existingHouses == existingBuildings
 		freeHouses, freeHotels = propertyGame.GetFreeBuildings()
 
-		assert len(freeHouses) == propertyGame.houseMarkers-existingBuildings
-		assert len(freeHotels) == propertyGame.hotelMarkers
+		assert freeHouses == propertyGame.houseMarkers-existingBuildings
+		assert freeHotels == propertyGame.hotelMarkers
 
 	# Try build with housing shortage
 	groupId = 6
@@ -189,8 +189,8 @@ def CheckBuildingCode():
 				cursor += 1
 				if cursor >= len(propertyGame.board): cursor = 0
 			
-			propertyGame.boardHouses[i] = cursor # Put one house on properties
-			propertyGame.boardGroupBuildOrder[propertyGame.propertyInGroup[cursor]].append(cursor)
+			propertyGame.spaceBuildings[cursor] += 1 # Put one house on properties
+			propertyGame.housesInBank -= 1
 
 			cursor += 1
 			if cursor >= len(propertyGame.board): cursor = 0
@@ -221,7 +221,8 @@ def CheckRemoveBuildings():
 		
 		for i, spaceId in enumerate(propertyGame.propertyGroup[groupId]):
 			propertyGame.spaceOwners[spaceId] = ownerId # Assign space ownership to player 0	
-			propertyGame.boardHotels[i] = spaceId # Put one hotel on properties
+			propertyGame.spaceBuildings[spaceId] = 5 # Put one hotel on properties
+			propertyGame.hotelsInBank -= 1
 		costToBuild = 0
 		for i in range(numBuildingsToFull):			
 			spaceId = propertyGame.propertyGroup[groupId][i % len(propertyGame.propertyGroup[groupId])]
@@ -229,7 +230,6 @@ def CheckRemoveBuildings():
 
 			if i >= numBuildings:
 				costToBuild += space['building_costs']
-			propertyGame.boardGroupBuildOrder[groupId].append(spaceId)
 
 		impossible, numAllowed, reasons, planCost = propertyGame.SetNumBuildingsInGroup(groupId, numBuildings)
 
@@ -245,10 +245,10 @@ def CheckRemoveBuildings():
 		assert diffHouses <= 1 # Add houses as evenly as possible
 
 		if numBuildings <= 12:
-			assert len(freeHouses) == propertyGame.houseMarkers-numBuildings
-			assert len(freeHotels) == propertyGame.hotelMarkers
+			assert freeHouses == propertyGame.houseMarkers-numBuildings
+			assert freeHotels == propertyGame.hotelMarkers
 		else:
-			assert len(freeHotels) == propertyGame.hotelMarkers-numBuildings+fullHousesNeeded
+			assert freeHotels == propertyGame.hotelMarkers-numBuildings+fullHousesNeeded
 
 		assert propertyGame.playerMoney[ownerId] == 1500 + costToBuild // 2
 
@@ -1254,9 +1254,9 @@ def SeriousTopUp(propertyGame, row, player, amount):
 	propertyGame.globalInterface.Log("Row {}: player {} topped up by {} (rule deviation)".format(row, player, amount))
 	propertyGame.playerMoney[player - 1] += amount
 
-def SeriousBuild(propertyGame, row, player, groupId, numBuildings, expectedSpaceId, expectedCost):
+def SeriousBuild(propertyGame, row, player, groupId, numBuildings, expectedSpaceId, expectedCost, preferredSpaces=None):
 	before = propertyGame.playerMoney[player - 1]
-	impossible, numAllowed, reasons, planCost = propertyGame.BuildBuildings(player - 1, groupId, numBuildings)
+	impossible, numAllowed, reasons, planCost = propertyGame.BuildBuildings(player - 1, groupId, numBuildings, preferredSpaces)
 	if impossible:
 		raise RuntimeError("Row {}: build failed {}".format(row, reasons))
 	if propertyGame.NumHousesOnSpace(expectedSpaceId) < 1:
@@ -1357,13 +1357,12 @@ def CheckSeriousGameplay():
 	SeriousTurn(pg, pi, 55, 2, [(5,1)], 24, {}) # Own property
 	SeriousTurn(pg, pi, 56, 3, [(5,3)], None, {3:+200}) # Passes Go, community chest: go to jail
 
-	# Two houses on orange. The video puts them on Bow Street and Vine Street, which is legal
-	# but not the engine's choice, so move the Marlborough Street house to Bow Street.
-	SeriousBuild(pg, 57, 3, 3, 2, 19, 200)
-	pg.boardHouses[pg.boardHouses.index(18)] = 16
-	pg.boardGroupBuildOrder[3] = [19, 16]
+	# Two houses on orange, placed by the owner on Bow Street and Vine Street
+	SeriousBuild(pg, 57, 3, 3, 2, 16, 200, preferredSpaces=[16, 19])
+	if [pg.NumHousesOnSpace(spaceId) for spaceId in (16, 18, 19)] != [1, 0, 1]:
+		raise RuntimeError()
 
-	SeriousTurn(pg, pi, 58, 1, [(5,1)], 31, {}, auctionBids=noBids) # Can't afford Regent Street. Rule deviation: the banker keeps it off the market, so nobody bids
+	SeriousTurn(pg, pi, 58, 1, [(5,1)], 31, {}, optionToBuy=0, auctionBids=noBids) # Short of cash, doesn't mortgage to buy Regent Street. Rule deviation: the banker keeps it off the market, so nobody bids
 	SeriousTurn(pg, pi, 59, 2, [(2,4)], None, {}) # Go To Jail
 	SeriousTurn(pg, pi, 60, 3, [(6,3)], 19, {}, useJailCard=True) # Uses get out of jail free, own property
 	SeriousTurn(pg, pi, 61, 1, [(5,1)], 37, {}) # Own property
@@ -1371,7 +1370,7 @@ def CheckSeriousGameplay():
 	SeriousTurn(pg, pi, 63, 3, [(6,2)], 27, {}) # Own property
 	SeriousTurn(pg, pi, 64, 1, [(5,1)], 3, {1:+200-4, 3:+4}) # Passes Go, rent on Whitechapel Road
 	SeriousTurn(pg, pi, 65, 2, [(5,3)], None, {}) # Go To Jail
-	SeriousTurn(pg, pi, 66, 3, [(5,3)], 35, {1:-160}, auctionBids={1:160, 2:0, 3:0}) # Can't afford Liverpool Street Station, auctioned
+	SeriousTurn(pg, pi, 66, 3, [(5,3)], 35, {1:-160}, optionToBuy=0, auctionBids={1:160, 2:0, 3:0}) # Short of cash, doesn't mortgage to buy Liverpool Street Station, auctioned
 	SeriousTurn(pg, pi, 67, 1, [(4,2)], 9, {1:-8, 2:+8}) # Rent on Pentonville Road, owner is in jail
 	SeriousTurn(pg, pi, 68, 2, [(5,6)], None, {}) # Fails to leave jail
 	SeriousTurn(pg, pi, 69, 3, [(1,2)], 38, {3:-100}) # Super Tax
@@ -1406,34 +1405,47 @@ def CheckSeriousGameplay():
 	SeriousTopUp(pg, 82, 3, 83)
 	SeriousBuild(pg, 82, 3, 3, 8, 19, 400)
 
-	pg.playerTurn = 0 # Row 83, rule deviation: player 3 misses a turn
+	pg.playerTurn = 0 # Row 82, rule deviation: player 3 misses a turn
 
-	SeriousTurn(pg, pi, 84, 1, [(3,4)], 9, {1:-8, 2:+8}) # Rent on Pentonville Road
-	SeriousTurn(pg, pi, 85, 2, [(3,2)], 24, {}) # Own property
-	SeriousBuild(pg, 86, 2, 4, 3, 21, 150) # Third red house, on Strand
-	SeriousTurn(pg, pi, 87, 3, [(4,2)], 10, {}) # Just visiting
+	SeriousTurn(pg, pi, 83, 1, [(3,4)], 9, {1:-8, 2:+8}) # Rent on Pentonville Road
+	SeriousTurn(pg, pi, 84, 2, [(3,2)], 24, {}) # Own property
+	SeriousBuild(pg, 85, 2, 4, 3, 21, 150) # Third red house, on Strand
+	SeriousTurn(pg, pi, 86, 3, [(4,2)], 10, {}) # Just visiting
 
 	# Vine Street, 3 houses: 600 (video: 2 houses, 220). Rule deviation: top up 236 so player 1 can pay.
-	SeriousTopUp(pg, 88, 1, 236)
-	SeriousTurn(pg, pi, 88, 1, [(6,4)], 19, {1:-600, 3:+600})
+	SeriousTopUp(pg, 87, 1, 236)
+	SeriousTurn(pg, pi, 87, 1, [(6,4)], 19, {1:-600, 3:+600})
 
 	# Rule deviation: the banker's hotels on Regent Street eliminate player 2. Here it is still unowned,
 	# so nobody bids, then player 2 goes bankrupt to the bank and their property goes unsold.
-	SeriousTurn(pg, pi, 89, 2, [(3,4)], 31, {}, auctionBids=noBids)
+	SeriousTurn(pg, pi, 88, 2, [(3,4)], 31, {}, optionToBuy=0, auctionBids=noBids)
 	for pl in pi:
 		pl.getAuctionBid = 0
 	pg.PlayerGoesBankrupt(1, 'bank')
 
-	SeriousTurn(pg, pi, 90, 3, [(6,1)], 17, {}) # Community chest: get out of jail free
+	SeriousTurn(pg, pi, 89, 3, [(6,1)], 17, {}) # Community chest: get out of jail free
 	if len(pg.playerGetOutOfJailCards[2]) != 1:
 		raise RuntimeError()
-	SeriousBuild(pg, 91, 3, 3, 10, 19, 200) # Legal placement Bow 3 / Marlborough 3 / Vine 4 (video: 4 on Vine)
+	SeriousBuild(pg, 90, 3, 3, 10, 19, 200) # Legal placement Bow 3 / Marlborough 3 / Vine 4 (video: 4 on Vine)
 
-	SeriousTopUp(pg, 92, 1, 22) # Rule deviation: player 1 was emptied by the higher Vine Street rent
-	SeriousTurn(pg, pi, 92, 1, [(5,3)], 27, {1:-22, 3:+22}) # Rent on Coventry Street
+	SeriousTopUp(pg, 91, 1, 22) # Rule deviation: player 1 was emptied by the higher Vine Street rent
+	SeriousTurn(pg, pi, 91, 1, [(5,3)], 27, {1:-22, 3:+22}) # Rent on Coventry Street
 
 	if pg.playerMoney != [0, 0, 422] or pg.playerBankrupt != [False, True, False]:
 		raise RuntimeError()
+
+def CheckPlayerInterfaces():
+
+	# Every kind of player must implement every PlayerInterface method, with the same parameters
+	import inspect
+	for cls in [HumanInterface, RandomInterface, TestInterface]:
+		for name, method in inspect.getmembers(PlayerInterface, inspect.isfunction):
+			if name == "__init__": continue
+			implementation = getattr(cls, name)
+			if implementation is method:
+				raise RuntimeError("{} does not implement {}".format(cls.__name__, name))
+			if list(inspect.signature(implementation).parameters) != list(inspect.signature(method).parameters):
+				raise RuntimeError("{}.{} has different parameters".format(cls.__name__, name))
 
 def Test():
 
@@ -1442,6 +1454,7 @@ def Test():
 	CheckNormalGameplay()
 	CheckAdvanceToGo()
 	CheckSeriousGameplay()
+	CheckPlayerInterfaces()
 
 if __name__=="__main__":
 	Test()
