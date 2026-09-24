@@ -1,7 +1,7 @@
 import random
 from propertygame import PropertyGame, GlobalInterface
 from interfaces import *
-from basicai import BasicAIInterface
+from basicai import BasicAIInterface, BasicAIParameters
 
 def SetCardPosition(deck, cardName, position):
 	
@@ -1577,6 +1577,27 @@ def CheckBasicAITrading():
 	if len(offers) != 1:
 		raise RuntimeError()
 
+def CheckBasicAISetStrength():
+
+	# The basic AI bids more for a colour set it rates more highly
+	strongOrange = BasicAIParameters(setStrength=[1.0, 1.0, 1.0, 1.5, 1.0, 1.0, 1.0, 1.0])
+	playerInterfaces = [BasicAIInterface(0), BasicAIInterface(1, strongOrange), TestInterface(2)]
+	propertyGame = PropertyGame(GlobalInterface(), playerInterfaces, rollForFirstPlayer=False)
+	if len(BasicAIParameters().setStrength) != len(propertyGame.propertyGroup):
+		raise RuntimeError()
+	if strongOrange.Changes() != {"setStrength": [1.0, 1.0, 1.0, 1.5, 1.0, 1.0, 1.0, 1.0]}:
+		raise RuntimeError()
+	try:
+		BasicAIParameters(notASetting=1)
+		raise RuntimeError("Unknown setting accepted")
+	except AttributeError:
+		pass
+	# New York Avenue (price 200, orange) with the orange set still open: worth 220 to a neutral AI
+	if playerInterfaces[0].GetAuctionBid(19, 230, 2, propertyGame) is not None:
+		raise RuntimeError()
+	if playerInterfaces[1].GetAuctionBid(19, 230, 2, propertyGame) is None:
+		raise RuntimeError()
+
 def Test():
 
 	CheckBuildingCode()
@@ -1589,6 +1610,7 @@ def Test():
 	CheckCounterOffer()
 	CheckTradeLimits()
 	CheckBasicAITrading()
+	CheckBasicAISetStrength()
 
 if __name__=="__main__":
 	Test()
