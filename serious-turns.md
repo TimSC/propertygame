@@ -94,10 +94,9 @@
 | 78 | 00:53:55 | 2 | 4,2 | 16 Bow Street | Pays player 3 rent | (wrong rent due to invalid placement) Video: 2 houses, 200. Replay: 1 house, **70** |
 | 79 | 00:53:55 | 3 | 6,3 | 4 Income Tax | Passes Go (+200), pays 200 | |
 | 80 | 00:54:34 | 1 | 5,2 | 2 Community Chest | Passes Go (+200). "Street party": 10 from each player | Birthday card |
-| 81 | 00:59:02 | 2 | 2,1 | 19 Vine Street | Pays player 3 rent of 220 | 2 houses in both the video and the replay |
-| 82 | 00:59:02 | 3 | – | – | Buys 4 more buildings on orange (400) | Video: 2 houses on Bow, then a hotel on Bow, then 1 house on Marlborough. A hotel needs 4 houses on every property in the group. Replay: Bow 2 / Marlborough 3 / Vine 3, and player 3 is **topped up by 83** because the replay's rents were lower |
-| 83 | – | 3 | – | – | ⚠ Misses a turn | The replay forces this. Player 3's position fits a skipped turn |
-| 84 | 01:00:23 | 1 | 7 | 9 Pentonville Road | Pays player 2 rent of 8 | |
+| 81 | 00:54:50 | 2 | 2,1 | 19 Vine Street | Pays player 3 rent of 220 | 2 houses in both the video and the replay |
+| 82 | 00:55:00 | 3 | – | – | Buys 4 more buildings on orange (400) | Video: 2 houses on Bow, then a hotel on Bow, then 1 house on Marlborough. A hotel needs 4 houses on every property in the group. Replay: Bow 2 / Marlborough 3 / Vine 3, and player 3 is **topped up by 83** because the replay's rents were lower. Player 3 forgets to take a turn. |
+| 84 | 00:57:10 | 1 | 7 | 9 Pentonville Road | Pays player 2 rent of 8 | |
 | 85 | 01:00:23 | 2 | 3,2 | 24 Trafalgar Square | Own property | |
 | 86 | 01:00:23 | 2 | – | – | Buys a third red house (150), placed on 21 Strand | |
 | 87 | 01:00:23 | 3 | 4,2 | 10 Just Visiting | | |

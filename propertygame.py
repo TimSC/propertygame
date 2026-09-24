@@ -9,8 +9,8 @@ class PropertyGame(object):
 	and training AIs.
 	"""
 
-	def __init__(self, globalInterface, playerInterfaces):
-		data = json.load(open("property-board-us.txt", "rt"))
+	def __init__(self, globalInterface, playerInterfaces, boardFile="property-board-us.txt"):
+		data = json.load(open(boardFile, "rt"))
 		self.board = data['board']
 		self.communityCards = data['community_cards']
 		random.shuffle(self.communityCards)
@@ -570,6 +570,7 @@ class PropertyGame(object):
 
 	def MortgageSpace(self, spaceId):
 
+		assert not self.spaceMortgaged[spaceId]
 		if spaceId in self.propertyInGroup:
 			assert self.NumHousesInGroup(self.propertyInGroup[spaceId])[0] == 0
 		space = self.board[spaceId]
@@ -586,6 +587,7 @@ class PropertyGame(object):
 
 	def UnmortgageSpace(self, spaceId):
 
+		assert self.spaceMortgaged[spaceId]
 		if spaceId in self.propertyInGroup:
 			assert self.NumHousesInGroup(self.propertyInGroup[spaceId])[0] == 0
 		ownerId = self.spaceOwners[spaceId]

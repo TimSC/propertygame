@@ -1212,12 +1212,236 @@ def CheckAdvanceToGo():
 	propertyGame.DoTurn([(4,4), (4,4), (1,6)])
 	assert propertyGame.playerMoney[0] == 1500 + 4*200 - 400 - 200
 
+def SeriousTurn(propertyGame, playerInterfaces, row, player, rolls, expectedPos, moneyChange, optionToBuy=None, auctionBids=None, useJailCard=False):
+	# Play one scripted turn. Players are numbered 1-3 as in serious-turns.md.
+	playerId = player - 1
+	while propertyGame.playerBankrupt[propertyGame.playerTurn]:
+		propertyGame.EndPlayerTurn()
+	if propertyGame.playerTurn != playerId:
+		raise RuntimeError("Row {}: expected player {} to have the turn".format(row, player))
+
+	for pl in playerInterfaces:
+		pl.Reset()
+	playerInterfaces[playerId].optionToBuy = optionToBuy
+	playerInterfaces[playerId].useGetOutOfJailCard = useJailCard
+	if auctionBids is not None:
+		for bidder, bid in auctionBids.items():
+			playerInterfaces[bidder - 1].getAuctionBid = bid
+
+	before = propertyGame.playerMoney[:]
+	propertyGame.DoTurn(rolls)
+
+	if propertyGame.playerPositions[playerId] != expectedPos:
+		raise RuntimeError("Row {}: player {} ended on {}".format(row, player, propertyGame.playerPositions[playerId]))
+	for i in range(propertyGame.numPlayers):
+		change = propertyGame.playerMoney[i] - before[i]
+		if change != moneyChange.get(i + 1, 0):
+			raise RuntimeError("Row {}: player {} money changed by {}".format(row, i + 1, change))
+
+	propertyGame.EndPlayerTurn()
+
+def SeriousTrade(propertyGame, playerInterfaces, row, proposer, recipient, proposerSpaces, recipientSpaces, proposerMoney=0, recipientMoney=0):
+	offer = propertyGame.NewTrade(proposer - 1, recipient - 1)
+	offer.spaces = [proposerSpaces, recipientSpaces]
+	offer.money = [proposerMoney, recipientMoney]
+	playerInterfaces[recipient - 1].acceptTrade = True
+	if not propertyGame.ProposeTrade(offer):
+		raise RuntimeError("Row {}: trade failed {}".format(row, propertyGame.TradeProblems(offer)))
+	playerInterfaces[recipient - 1].acceptTrade = False
+
+def SeriousTopUp(propertyGame, row, player, amount):
+	# Rule deviation: gives a player cash so they stay in the game (see serious-turns.md)
+	propertyGame.globalInterface.Log("Row {}: player {} topped up by {} (rule deviation)".format(row, player, amount))
+	propertyGame.playerMoney[player - 1] += amount
+
+def SeriousBuild(propertyGame, row, player, groupId, numBuildings, expectedSpaceId, expectedCost):
+	before = propertyGame.playerMoney[player - 1]
+	impossible, numAllowed, reasons, planCost = propertyGame.BuildBuildings(player - 1, groupId, numBuildings)
+	if impossible:
+		raise RuntimeError("Row {}: build failed {}".format(row, reasons))
+	if propertyGame.NumHousesOnSpace(expectedSpaceId) < 1:
+		raise RuntimeError("Row {}: house not on space {}".format(row, expectedSpaceId))
+	if before - propertyGame.playerMoney[player - 1] != expectedCost:
+		raise RuntimeError("Row {}: house cost {}".format(row, before - propertyGame.playerMoney[player - 1]))
+
+def CheckSeriousGameplay():
+
+	# Replays "Monopoly, But SERIOUS" (No Rolls Barred), UK board.
+	# https://www.youtube.com/watch?v=cDmxXT2o9sE
+	# Row numbers and players (1-3) refer to serious-turns.md. Where only a dice total
+	# was visible, a non-double pair with that total is used.
+	playerInterfaces = [TestInterface(0), TestInterface(1), TestInterface(2)]
+	globalInterface = GlobalInterface()
+	propertyGame = PropertyGame(globalInterface, playerInterfaces, "property-board-uk.txt")
+	propertyGame.playerTurn = 2 # Player 3 rolled highest to start
+
+	for i, cardName in enumerate(["GetOutJailFree", "AdvancePallMall", "AdvanceMayfair", "BuildingLoanMatures",
+		"AdvanceTrafalgarSquare", "Chairperson", "GoBack3Spaces", "SpeedingFine"]):
+		SetCardPosition(propertyGame.chanceCards, cardName, i)
+	for i, cardName in enumerate(["BankError", "IncomeTaxRefund", "AdvanceToGo", "GoToJailCard", "Birthday", "GetOutJailFree"]):
+		SetCardPosition(propertyGame.communityCards, cardName, i)
+
+	pg, pi = propertyGame, playerInterfaces
+
+	SeriousTurn(pg, pi, 2, 3, [(1,3)], 4, {3:-200}) # Income Tax
+	SeriousTurn(pg, pi, 3, 1, [(1,5)], 6, {1:-100}, optionToBuy=1) # Buys The Angel Islington
+	SeriousTurn(pg, pi, 4, 2, [(4,2)], 6, {2:-6, 1:+6}) # Rent on The Angel Islington
+	SeriousTurn(pg, pi, 5, 3, [(6,1)], 11, {3:-140}, optionToBuy=1) # Buys Pall Mall
+	SeriousTurn(pg, pi, 6, 1, [(6,2)], 14, {1:-160}, optionToBuy=1) # Buys Northumberland Avenue
+	SeriousTurn(pg, pi, 7, 2, [(3,4)], 13, {2:-145}, optionToBuy=0, auctionBids={1:0, 2:145, 3:0}) # Whitehall auctioned
+	SeriousTurn(pg, pi, 8, 3, [(5,6)], 22, {}) # Chance: get out of jail free
+	if len(pg.playerGetOutOfJailCards[2]) != 1:
+		raise RuntimeError()
+	SeriousTurn(pg, pi, 9, 1, [(5,4)], 23, {1:-220}, optionToBuy=1) # Buys Fleet Street
+	SeriousTurn(pg, pi, 10, 2, [(5,3)], 21, {2:-220}, optionToBuy=1) # Buys Strand
+	SeriousTurn(pg, pi, 11, 3, [(6,4)], 32, {3:-300}, optionToBuy=1) # Buys Oxford Street
+	SeriousTurn(pg, pi, 12, 1, [(6,3)], 32, {1:-26, 3:+26}) # Rent on Oxford Street
+	SeriousTurn(pg, pi, 13, 2, [(1,2)], 24, {2:-240}, optionToBuy=1) # Buys Trafalgar Square
+	SeriousTurn(pg, pi, 14, 3, [(5,6)], 3, {3:+200-60}, optionToBuy=1) # Passes Go, buys Whitechapel Road
+	SeriousTurn(pg, pi, 15, 1, [(1,4)], 37, {1:-350}, optionToBuy=1) # Buys Park Lane
+
+	# Player 2 buys Fleet Street from player 1 for 50 + Whitehall, completing the reds
+	SeriousTrade(pg, pi, 16, 2, 1, [13], [23], proposerMoney=50)
+	if pg.GetGroupOwner(4) != 1:
+		raise RuntimeError()
+	SeriousBuild(pg, 17, 2, 4, 1, 24, 150) # One house, on Trafalgar Square
+
+	SeriousTurn(pg, pi, 18, 2, [(5,1)], None, {}) # Go To Jail
+	SeriousTurn(pg, pi, 19, 3, [(6,2)], 11, {}) # Own property
+	SeriousTurn(pg, pi, 20, 1, [(1,3)], 1, {1:+200-60}, optionToBuy=1) # Passes Go, buys Old Kent Road
+	SeriousTurn(pg, pi, 21, 2, [(2,2)], 14, {2:-12, 1:+12}) # Double to leave jail, no second roll
+	SeriousTurn(pg, pi, 22, 3, [(1,1), (6,1)], 20, {3:-10, 1:+10}) # Rent on Whitehall, then Free Parking
+	SeriousTurn(pg, pi, 23, 1, [(1,2)], 4, {1:-200}) # Income Tax
+	SeriousTurn(pg, pi, 24, 2, [(6,4)], 24, {}) # Own property
+	SeriousTurn(pg, pi, 25, 3, [(1,1), (6,1)], 18, {3:+200-180}, optionToBuy=1) # Chance to Pall Mall, then buys Marlborough Street
+	SeriousTurn(pg, pi, 26, 1, [(1,2)], 39, {1:-400}, optionToBuy=1) # Chance to Mayfair, buys it
+	SeriousTurn(pg, pi, 27, 2, [(5,4)], 33, {2:+200}) # Community chest: +200
+	SeriousTurn(pg, pi, 28, 3, [(6,3)], 27, {3:-260}, optionToBuy=1) # Buys Coventry Street
+	SeriousTurn(pg, pi, 29, 1, [(6,2)], 7, {1:+200+150}) # Passes Go, chance: building loan matures
+	SeriousTurn(pg, pi, 30, 2, [(4,2)], 39, {2:-100, 1:+100}) # Double rent on Mayfair (full set)
+	SeriousTurn(pg, pi, 31, 3, [(5,2)], 34, {3:-320}, optionToBuy=1) # Buys Bond Street
+	SeriousTurn(pg, pi, 32, 1, [(4,1)], 12, {1:-150}, optionToBuy=1) # Buys Electric Company
+	SeriousTurn(pg, pi, 33, 2, [(6,4)], 9, {2:+200-120}, optionToBuy=1) # Passes Go, buys Pentonville Road
+	SeriousTurn(pg, pi, 34, 3, [(1,3)], 38, {3:-100}) # Super Tax
+	# Player 1 proposes a trade that player 3 rejects (no effect)
+
+	SeriousBuild(pg, 36, 1, 7, 1, 39, 200) # One house, on Mayfair
+	SeriousTurn(pg, pi, 37, 1, [(6,4)], 24, {1:-100, 2:+100}) # Chance to Trafalgar Square, rent with 1 house
+	SeriousBuild(pg, 38, 2, 4, 2, 23, 150) # Second red house, on Fleet Street
+
+	SeriousTurn(pg, pi, 39, 2, [(4,4), (6,4)], 27, {2:+20-22, 3:+22}) # Community chest +20, then rent on Coventry Street
+	SeriousTurn(pg, pi, 40, 3, [(6,5)], 9, {3:+200-8, 2:+8}) # Passes Go, rent on Pentonville Road
+	SeriousTurn(pg, pi, 41, 1, [(6,3)], 0, {1:+200}) # Community chest: advance to Go
+	SeriousTurn(pg, pi, 42, 2, [(6,3)], 36, {2:-100, 1:+50, 3:+50}) # Chance: chairperson pays each player 50
+	SeriousTurn(pg, pi, 43, 3, [(3,2)], 14, {3:-12, 1:+12}) # Rent on Northumberland Avenue
+	SeriousTurn(pg, pi, 44, 1, [(6,4)], 10, {}) # Just visiting
+	SeriousTurn(pg, pi, 45, 2, [(6,2)], 4, {2:+200-200}) # Passes Go, Income Tax
+	SeriousTurn(pg, pi, 46, 3, [(4,3)], 21, {3:-36, 2:+36}) # Double rent on Strand (unimproved, full set)
+	SeriousTurn(pg, pi, 47, 1, [(4,2)], 16, {3:-193}, optionToBuy=0, auctionBids={1:0, 2:0, 3:193}) # Bow Street auctioned
+	SeriousTurn(pg, pi, 48, 2, [(4,2)], 10, {}) # Just visiting
+	SeriousTurn(pg, pi, 49, 3, [(4,1)], 26, {3:-260}, optionToBuy=1) # Buys Leicester Square
+	SeriousTurn(pg, pi, 50, 1, [(4,2)], 19, {1:-200}, optionToBuy=1) # Chance: back 3 to Vine Street, buys it
+	SeriousTurn(pg, pi, 51, 2, [(6,2)], 18, {2:-14, 3:+14}) # Rent on Marlborough Street
+
+	# Player 1 trades Vine Street for player 3's Pall Mall, completing orange and pink
+	SeriousTrade(pg, pi, 52, 1, 3, [19], [11])
+	if pg.GetGroupOwner(3) != 2 or pg.GetGroupOwner(2) != 0:
+		raise RuntimeError()
+
+	if pg.playerMoney != [324, 735, 133]:
+		raise RuntimeError()
+
+	noBids = {1:0, 2:0, 3:0}
+	SeriousTurn(pg, pi, 53, 3, [(6,2)], 34, {}) # Own property
+	SeriousTurn(pg, pi, 54, 1, [(5,1)], 25, {1:-200}, optionToBuy=1) # Buys Fenchurch Street Station
+	SeriousTurn(pg, pi, 55, 2, [(5,1)], 24, {}) # Own property
+	SeriousTurn(pg, pi, 56, 3, [(5,3)], None, {3:+200}) # Passes Go, community chest: go to jail
+
+	# Two houses on orange. The video puts them on Bow Street and Vine Street, which is legal
+	# but not the engine's choice, so move the Marlborough Street house to Bow Street.
+	SeriousBuild(pg, 57, 3, 3, 2, 19, 200)
+	pg.boardHouses[pg.boardHouses.index(18)] = 16
+	pg.boardGroupBuildOrder[3] = [19, 16]
+
+	SeriousTurn(pg, pi, 58, 1, [(5,1)], 31, {}, auctionBids=noBids) # Can't afford Regent Street. Rule deviation: the banker keeps it off the market, so nobody bids
+	SeriousTurn(pg, pi, 59, 2, [(2,4)], None, {}) # Go To Jail
+	SeriousTurn(pg, pi, 60, 3, [(6,3)], 19, {}, useJailCard=True) # Uses get out of jail free, own property
+	SeriousTurn(pg, pi, 61, 1, [(5,1)], 37, {}) # Own property
+	SeriousTurn(pg, pi, 62, 2, [(6,6)], 22, {2:-15}) # Double to leave jail, chance: speeding fine
+	SeriousTurn(pg, pi, 63, 3, [(6,2)], 27, {}) # Own property
+	SeriousTurn(pg, pi, 64, 1, [(5,1)], 3, {1:+200-4, 3:+4}) # Passes Go, rent on Whitechapel Road
+	SeriousTurn(pg, pi, 65, 2, [(5,3)], None, {}) # Go To Jail
+	SeriousTurn(pg, pi, 66, 3, [(5,3)], 35, {1:-160}, auctionBids={1:160, 2:0, 3:0}) # Can't afford Liverpool Street Station, auctioned
+	SeriousTurn(pg, pi, 67, 1, [(4,2)], 9, {1:-8, 2:+8}) # Rent on Pentonville Road, owner is in jail
+	SeriousTurn(pg, pi, 68, 2, [(5,6)], None, {}) # Fails to leave jail
+	SeriousTurn(pg, pi, 69, 3, [(1,2)], 38, {3:-100}) # Super Tax
+	SeriousTurn(pg, pi, 70, 1, [(6,3)], 18, {1:-28, 3:+28}) # Double rent on unimproved Marlborough Street
+	SeriousTurn(pg, pi, 71, 2, [(6,4)], None, {}) # Fails to leave jail
+	SeriousTurn(pg, pi, 72, 3, [(6,6), (4,2)], 16, {3:+200}) # Passes Go, own property
+
+	# Rule deviation: the video builds Bow 2 / Marlborough 0 / Vine 2, which is uneven.
+	# Use the engine's legal placement (Bow 1 / Marlborough 1 / Vine 2), so orange rents differ from the video.
+	SeriousBuild(pg, 73, 3, 3, 4, 18, 200)
+
+	SeriousTurn(pg, pi, 74, 1, [(5,3)], 26, {1:-22, 3:+22}) # Rent on Leicester Square
+
+	# Row 75, rule deviation: third failed roll, pays 50 but the video does not move them
+	# (the rules would move them 3 to Whitehall and charge 20 rent)
+	if pg.playerTurn != 1:
+		raise RuntimeError()
+	pg.EnsurePlayment(1, 50)
+	pg.ReleaseFromJail(1)
+	pg.EndPlayerTurn()
+
+	# Water Works: rule deviation, the banker keeps it off the market. Doubles, then rent on Liverpool Street Station.
+	SeriousTurn(pg, pi, 76, 3, [(6,6), (6,1)], 35, {3:-50, 1:+50}, optionToBuy=0, auctionBids=noBids)
+	SeriousTurn(pg, pi, 77, 1, [(5,4)], 35, {}) # Own property
+	SeriousTurn(pg, pi, 78, 2, [(4,2)], 16, {2:-70, 3:+70}) # Bow Street, 1 house (video: 2 houses, 200)
+	SeriousTurn(pg, pi, 79, 3, [(6,3)], 4, {3:+200-200}) # Passes Go, Income Tax
+	SeriousTurn(pg, pi, 80, 1, [(5,2)], 2, {1:+200+20, 2:-10, 3:-10}) # Passes Go, community chest: street party
+	SeriousTurn(pg, pi, 81, 2, [(2,1)], 19, {2:-220, 3:+220}) # Vine Street, 2 houses
+
+	# The video buys four buildings (hotel on Bow Street), which is uneven. Legal placement is
+	# Bow 2 / Marlborough 3 / Vine 3. Rule deviation: top up 83, as the model's orange rents were lower.
+	SeriousTopUp(pg, 82, 3, 83)
+	SeriousBuild(pg, 82, 3, 3, 8, 19, 400)
+
+	pg.playerTurn = 0 # Row 83, rule deviation: player 3 misses a turn
+
+	SeriousTurn(pg, pi, 84, 1, [(3,4)], 9, {1:-8, 2:+8}) # Rent on Pentonville Road
+	SeriousTurn(pg, pi, 85, 2, [(3,2)], 24, {}) # Own property
+	SeriousBuild(pg, 86, 2, 4, 3, 21, 150) # Third red house, on Strand
+	SeriousTurn(pg, pi, 87, 3, [(4,2)], 10, {}) # Just visiting
+
+	# Vine Street, 3 houses: 600 (video: 2 houses, 220). Rule deviation: top up 236 so player 1 can pay.
+	SeriousTopUp(pg, 88, 1, 236)
+	SeriousTurn(pg, pi, 88, 1, [(6,4)], 19, {1:-600, 3:+600})
+
+	# Rule deviation: the banker's hotels on Regent Street eliminate player 2. Here it is still unowned,
+	# so nobody bids, then player 2 goes bankrupt to the bank and their property goes unsold.
+	SeriousTurn(pg, pi, 89, 2, [(3,4)], 31, {}, auctionBids=noBids)
+	for pl in pi:
+		pl.getAuctionBid = 0
+	pg.PlayerGoesBankrupt(1, 'bank')
+
+	SeriousTurn(pg, pi, 90, 3, [(6,1)], 17, {}) # Community chest: get out of jail free
+	if len(pg.playerGetOutOfJailCards[2]) != 1:
+		raise RuntimeError()
+	SeriousBuild(pg, 91, 3, 3, 10, 19, 200) # Legal placement Bow 3 / Marlborough 3 / Vine 4 (video: 4 on Vine)
+
+	SeriousTopUp(pg, 92, 1, 22) # Rule deviation: player 1 was emptied by the higher Vine Street rent
+	SeriousTurn(pg, pi, 92, 1, [(5,3)], 27, {1:-22, 3:+22}) # Rent on Coventry Street
+
+	if pg.playerMoney != [0, 0, 422] or pg.playerBankrupt != [False, True, False]:
+		raise RuntimeError()
+
 def Test():
 
 	CheckBuildingCode()
 	CheckRemoveBuildings()
 	CheckNormalGameplay()
 	CheckAdvanceToGo()
+	CheckSeriousGameplay()
 
 if __name__=="__main__":
 	Test()

@@ -478,6 +478,7 @@ class TestInterface(object):
 		self.buildingDemand = 0
 		self.buildingBid = None
 		self.acceptTrade = False
+		self.useGetOutOfJailCard = False
 
 	def OptionToBuy(self, spaceId, gameState):
 		if self.optionToBuy is None:
@@ -492,7 +493,7 @@ class TestInterface(object):
 		return self.getAuctionBid
 
 	def UseGetOutOfJailCard(self, gameState):
-		pass
+		return self.useGetOutOfJailCard
 
 	def PayJailFine(self, gameState):
 		return self.payGetOutOfJail
